@@ -9,6 +9,7 @@
                 <header>
                     <button name="action_test_connection" string="Test Connection" type="object" class="oe_highlight"/>
                     <button name="action_sync_now" string="Fetch Attendance Data" type="object" class="btn-success"/>
+                    <button name="action_fetch_device_users" string="Fetch Device Users" type="object" class="btn-primary"/>
                     <button name="action_get_device_status" string="Refresh Device Status" type="object"/>
                     <button name="action_sync_users_to_devices" string="Sync Users to Devices" type="object"/>
                 </header>

@@ -13,6 +13,15 @@ class ZKTecoDevice(models.Model):
     ip_address = fields.Char(string='IP Address')
     last_sync = fields.Datetime(string='Last Sync')
 
+    active = fields.Boolean(string='Active', default=True)
+    is_active = fields.Boolean(string='Is Active', default=True)
+    is_online = fields.Boolean(
+        string='Is Online',
+        compute='_compute_is_online',
+        search='_search_is_online',
+        inverse='_inverse_is_online',
+    )
+
     online_status = fields.Selection([
         ('online', 'Online'),
         ('offline', 'Offline'),
@@ -33,10 +42,36 @@ class ZKTecoDevice(models.Model):
 
     # ── Computed Fields ────────────────────────────────────────────────
 
-    @api.depends('last_sync')
+    @api.depends('last_sync', 'ip_address')
+    def _compute_is_online(self):
+        for device in self:
+            if device.ip_address == 'cloud':
+                device.is_online = True
+            elif device.last_sync and fields.Datetime.now() - device.last_sync < timedelta(seconds=60):
+                device.is_online = True
+            else:
+                device.is_online = False
+
+    def _inverse_is_online(self):
+        pass
+
+    def _search_is_online(self, operator, value):
+        if operator not in ('=', '!='):
+            raise ValueError("Unsupported operator")
+        limit_time = fields.Datetime.now() - timedelta(seconds=60)
+        
+        # Build domain
+        domain = ['|', ('ip_address', '=', 'cloud'), ('last_sync', '>=', limit_time)]
+        
+        if (operator == '=' and value) or (operator == '!=' and not value):
+            return domain
+        else:
+            return ['!', '&', ('ip_address', '!=', 'cloud'), ('last_sync', '<', limit_time)]
+
+    @api.depends('last_sync', 'ip_address')
     def _compute_online_status(self):
         for device in self:
-            if device.last_sync and fields.Datetime.now() - device.last_sync < timedelta(seconds=60):
+            if device.is_online:
                 device.online_status = 'online'
             else:
                 device.online_status = 'offline'

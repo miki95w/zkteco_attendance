@@ -498,3 +498,107 @@ class ADMSConfig(models.Model):
     def action_sync_now(self):
         """Manual sync button action."""
         return self.action_fetch_attendance_data()
+
+    def action_fetch_device_users(self):
+        """Fetch device users from Flask ADMS."""
+        self.ensure_one()
+        try:
+            response = self._make_request(self, '/api/users/from-device', method='GET')
+            
+            if response.status_code == 200:
+                data = response.json()
+                users_data = data.get('users', [])
+                
+                if not users_data:
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': _('No Users Found'),
+                            'message': _('No device users found on the Flask server buffer.'),
+                            'type': 'info',
+                            'sticky': False,
+                        }
+                    }
+                
+                processed_count = self._process_flask_users_data(users_data)
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('User Sync Successful'),
+                        'message': _('Processed %s device users from Flask server.') % processed_count,
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
+            else:
+                raise UserError(_('Flask ADMS returned status code: %s') % response.status_code)
+                
+        except Exception as e:
+            raise UserError(_('Failed to fetch device users: %s') % str(e))
+
+    def _parse_kv_line(self, line):
+        """Parse a tab-separated key=value line into a lowercase dict."""
+        parts = {}
+        for item in line.strip().split("\t"):
+            item = item.strip()
+            if "=" in item:
+                k, v = item.split("=", 1)
+                parts[k.strip().lower()] = v.strip()
+        return parts
+
+    def _process_flask_users_data(self, users_data):
+        """Process user data fetched from Flask ADMS."""
+        mapping_obj = self.env['zkteco.user.mapping'].sudo()
+        count = 0
+        
+        for user_record in users_data:
+            device_sn = user_record.get('device_sn')
+            raw_line = user_record.get('raw_data', '').strip()
+            
+            if not device_sn or not raw_line:
+                continue
+                
+            # Find device
+            device = self.env['zkteco.device'].sudo().search([
+                ('serial_number', '=', str(device_sn))
+            ], limit=1)
+            
+            if not device:
+                # Create device automatically
+                device = self.env['zkteco.device'].sudo().create({
+                    'name': f'Auto-created Device {device_sn}',
+                    'ip_address': 'unknown',
+                    'serial_number': str(device_sn),
+                    'is_active': True,
+                    'last_sync': fields.Datetime.now(),
+                })
+            
+            if raw_line.lower().startswith('user '):
+                raw_line = raw_line[5:]
+                
+            kv = self._parse_kv_line(raw_line)
+            pin = kv.get("pin")
+            name = kv.get("name") or ""
+            
+            if pin:
+                mapping = mapping_obj.search([
+                    ('device_user_id', '=', str(pin)),
+                    ('device_id', '=', device.id)
+                ], limit=1)
+                
+                if not mapping:
+                    mapping_obj.create({
+                        'device_user_id': str(pin),
+                        'device_user_name': name,
+                        'device_id': device.id,
+                    })
+                    _logger.info(f"[ADMS Config] Created user mapping: Device SN {device_sn} | PIN {pin} | Name {name}")
+                else:
+                    mapping.write({'device_user_name': name})
+                    _logger.info(f"[ADMS Config] Updated user mapping: Device SN {device_sn} | PIN {pin} | Name {name}")
+                count += 1
+                
+        return count
