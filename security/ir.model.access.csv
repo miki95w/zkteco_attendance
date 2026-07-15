@@ -14,5 +14,8 @@ access_zkteco_quarantine_link_wizard,zkteco.quarantine.link.wizard,model_zkteco_
 access_zkteco_attendance_record,zkteco.attendance.record,model_zkteco_attendance_record,base.group_user,1,0,0,0
 access_zkteco_attendance_record_admin,zkteco.attendance.record,model_zkteco_attendance_record,base.group_system,1,1,1,1
 access_zkteco_detailed_attendance_report,zkteco.detailed.attendance.report,model_zkteco_detailed_attendance_report,base.group_user,1,0,0,0
+access_zkteco_attendance_dashboard,zkteco.attendance.dashboard,model_zkteco_attendance_dashboard,base.group_user,1,1,1,0
+access_zkteco_attendance_dashboard_wizard,zkteco.attendance.dashboard.wizard,model_zkteco_attendance_dashboard_wizard,base.group_user,1,1,1,1
+access_zkteco_cloud_config,zkteco.cloud.config,model_zkteco_cloud_config,base.group_user,1,1,1,1
 access_zkteco_attendance_dashboard,zkteco.attendance.dashboard,model_zkteco_attendance_dashboard,base.group_user,1,0,0,0
 access_zkteco_attendance_dashboard_admin,zkteco.attendance.dashboard,model_zkteco_attendance_dashboard,base.group_system,1,1,1,1

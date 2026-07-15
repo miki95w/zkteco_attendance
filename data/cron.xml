@@ -36,5 +36,29 @@
             <field name="numbercall">-1</field>
             <field name="active">True</field>
         </record>
+        
+        <!-- Sync Cloud Data -->
+        <record id="ir_cron_sync_cloud_data" model="ir.cron">
+            <field name="name">Sync ZKTeco Cloud Data</field>
+            <field name="model_id" ref="model_zkteco_cloud_config"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_sync_cloud_data()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+        </record>
+        
+        <!-- Sync ADMS Data -->
+        <record id="ir_cron_sync_adms_data" model="ir.cron">
+            <field name="name">Sync Flask ADMS Data</field>
+            <field name="model_id" ref="model_zkteco_adms_config"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_fetch_attendance_data()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+        </record>
     </data>
 </odoo>

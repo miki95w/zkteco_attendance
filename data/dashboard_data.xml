@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Dashboard seed record — ensures the kanban view always has exactly one record to display -->
-    <record id="zkteco_attendance_dashboard_main" model="zkteco.attendance.dashboard">
-        <field name="name">Today's Attendance</field>
-    </record>
+    <data noupdate="1">
+        
+        <!-- Create default dashboard record -->
+        <record id="default_attendance_dashboard" model="zkteco.attendance.dashboard">
+            <field name="name">Attendance Overview</field>
+        </record>
+        
+    </data>
 </odoo>

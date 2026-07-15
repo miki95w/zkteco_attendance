@@ -38,6 +38,7 @@
         'views/attendance_record_views.xml',
         'views/detailed_attendance_report_views.xml',
         'views/attendance_dashboard_views.xml',
+        'views/cloud_config_views.xml',
     ],
     'installable': True,
     'application': True,
