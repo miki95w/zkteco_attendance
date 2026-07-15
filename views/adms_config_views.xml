@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Flask ADMS Configuration Form View -->
+    <record id="view_adms_config_form" model="ir.ui.view">
+        <field name="name">zkteco.adms.config.form</field>
+        <field name="model">zkteco.adms.config</field>
+        <field name="arch" type="xml">
+            <form string="Flask ADMS Configuration">
+                <header>
+                    <button name="action_test_connection" string="Test Connection" type="object" class="oe_highlight"/>
+                    <button name="action_get_device_status" string="Refresh Device Status" type="object"/>
+                    <button name="action_sync_users_to_devices" string="Sync Users to Devices" type="object"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_quarantine" type="object" class="oe_stat_button" icon="fa-exclamation-triangle">
+                            <field name="records_quarantined" widget="statinfo" string="Quarantined"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-check-circle" type="object" name="action_open_processed">
+                            <field name="records_processed" widget="statinfo" string="Processed"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-plug" type="object" name="action_open_devices">
+                            <field name="devices_connected" widget="statinfo" string="Devices"/>
+                        </button>
+                    </div>
+
+                    <group>
+                        <group string="Connectivity Status">
+                            <field name="connection_status" widget="badge"
+                                   decoration-success="connection_status == 'connected'"
+                                   decoration-danger="connection_status == 'error'"
+                                   decoration-warning="connection_status == 'disconnected'"/>
+                            <field name="last_sync" readonly="1"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Connection Settings">
+                            <field name="name"/>
+                            <field name="adms_url" placeholder="http://localhost:8000"/>
+                            <field name="api_key" password="True"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Help" name="help">
+                            <div class="p-3">
+                                <div class="card border-0 bg-light shadow-sm">
+                                    <div class="card-body">
+                                        <h5 class="fw-bold text-primary mb-3"><i class="fa fa-info-circle me-2"/>Flask ADMS Integration Guide</h5>
+                                        <p class="text-muted mb-4">This configuration connects Odoo to the Flask ADMS middleware that handles ZKTeco F22 devices.</p>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <div class="d-flex mb-3">
+                                                    <div class="me-3 text-primary"><i class="fa fa-link fa-lg"/></div>
+                                                    <div><strong class="d-block">ADMS URL</strong><span class="text-muted small">Base URL where Flask ADMS is running (e.g., http://localhost:8000)</span></div>
+                                                </div>
+                                                <div class="d-flex mb-3">
+                                                    <div class="me-3 text-primary"><i class="fa fa-key fa-lg"/></div>
+                                                    <div><strong class="d-block">API Key</strong><span class="text-muted small">Authentication key configured in Flask ADMS config.yml</span></div>
+                                                </div>
+                                                <div class="d-flex mb-3">
+                                                    <div class="me-3 text-primary"><i class="fa fa-refresh fa-lg"/></div>
+                                                    <div><strong class="d-block">Test Connection</strong><span class="text-muted small">Verify connectivity to Flask ADMS</span></div>
+                                                </div>
+                                                <div class="d-flex mb-0">
+                                                    <div class="me-3 text-primary"><i class="fa fa-sync fa-lg"/></div>
+                                                    <div><strong class="d-block">Sync Users</strong><span class="text-muted small">Push all Odoo employees to connected devices</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Flask ADMS Configuration Tree View -->
+    <record id="view_adms_config_tree" model="ir.ui.view">
+        <field name="name">zkteco.adms.config.tree</field>
+        <field name="model">zkteco.adms.config</field>
+        <field name="arch" type="xml">
+            <tree string="Flask ADMS Configurations">
+                <field name="name"/>
+                <field name="adms_url"/>
+                <field name="connection_status" widget="badge" 
+                       decoration-success="connection_status == 'connected'"
+                       decoration-danger="connection_status == 'error'"
+                       decoration-warning="connection_status == 'disconnected'"/>
+                <field name="devices_connected"/>
+                <field name="last_sync"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Flask ADMS Configuration Action -->
+    <record id="action_adms_config" model="ir.actions.act_window">
+        <field name="name">Flask ADMS Configuration</field>
+        <field name="res_model">zkteco.adms.config</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure Flask ADMS Connection
+            </p>
+            <p>
+                Set up the connection to your Flask ADMS middleware for real-time attendance synchronization.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_adms_config"
+              name="ADMS Config"
+              parent="menu_zkteco_configuration"
+              action="action_adms_config"
+              sequence="50"/>
+
+</odoo>

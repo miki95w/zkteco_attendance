@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_employee_form_inherit_zkteco" model="ir.ui.view">
+        <field name="name">hr.employee.form.inherit.zkteco</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook/page[@name='hr_settings']" position="inside">
+                <group string="ZKTeco Attendance">
+                    <field name="zkteco_device_id"/>
+                </group>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Attendance History" name="attendance_history">
+                    <field name="attendance_record_ids" readonly="1">
+                        <tree string="Attendance History" create="false">
+                            <field name="date"/>
+                            <field name="status" widget="badge"
+                                   decoration-success="status == 'present'"
+                                   decoration-danger="status == 'absent'"
+                                   decoration-warning="status == 'missed_punch'"
+                                   decoration-info="status == 'on_leave'"/>
+                            <field name="worked_hours" widget="float_time"/>
+                            <field name="is_late" widget="boolean"/>
+                            <field name="is_early_leave" widget="boolean"/>
+                            <field name="remarks"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

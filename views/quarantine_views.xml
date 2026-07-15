@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Quarantine Records Form View -->
+    <record id="view_quarantine_form" model="ir.ui.view">
+        <field name="name">zkteco.quarantine.form</field>
+        <field name="model">zkteco.quarantine</field>
+        <field name="arch" type="xml">
+            <form string="Quarantined Record">
+                <header>
+                    <button name="action_try_process" string="Retry Processing" type="object" 
+                            class="oe_highlight" invisible="not can_retry"/>
+                    <button name="action_link_employee" string="Link Employee" type="object" 
+                            invisible="employee_id"/>
+                    <button name="action_mark_reviewed" string="Mark Reviewed" type="object" 
+                            invisible="reviewed"/>
+                    <field name="reviewed" widget="badge" 
+                           decoration-success="reviewed == True"
+                           decoration-warning="reviewed == False"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Record Information">
+                            <field name="user_id"/>
+                            <field name="device_id"/>
+                            <field name="timestamp"/>
+                            <field name="event_type"/>
+                            <field name="created_at"/>
+                        </group>
+                        <group string="Error Details">
+                            <field name="error_reason" widget="text"/>
+                            <field name="can_retry" invisible="1"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Linked Records">
+                            <field name="employee_id"/>
+                            <field name="zkteco_device_id"/>
+                        </group>
+                        <group string="Review Status">
+                            <field name="reviewed_by" readonly="1"/>
+                            <field name="reviewed_at" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Resolution Notes">
+                        <field name="resolution_notes" widget="text" nolabel="1"/>
+                    </group>
+                    
+                    <group string="Raw Data">
+                        <field name="raw_data" filename="raw_data.bin"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Quarantine Records Tree View -->
+    <record id="view_quarantine_tree" model="ir.ui.view">
+        <field name="name">zkteco.quarantine.tree</field>
+        <field name="model">zkteco.quarantine</field>
+        <field name="arch" type="xml">
+            <tree string="Quarantined Records" decoration-muted="reviewed == True">
+                <field name="created_at"/>
+                <field name="user_id"/>
+                <field name="device_id"/>
+                <field name="timestamp"/>
+                <field name="error_reason"/>
+                <field name="employee_id"/>
+                <field name="reviewed" widget="boolean_toggle"/>
+                <field name="reviewed_by"/>
+                <field name="can_retry" invisible="1"/>
+                <button name="action_try_process" string="Retry" type="object" 
+                        icon="fa-refresh" invisible="not can_retry"/>
+                <button name="action_mark_reviewed" string="Mark Reviewed" type="object" 
+                        icon="fa-check" invisible="reviewed"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Quarantine Records Search View -->
+    <record id="view_quarantine_search" model="ir.ui.view">
+        <field name="name">zkteco.quarantine.search</field>
+        <field name="model">zkteco.quarantine</field>
+        <field name="arch" type="xml">
+            <search string="Search Quarantined Records">
+                <field name="user_id"/>
+                <field name="device_id"/>
+                <field name="employee_id"/>
+                <field name="error_reason"/>
+                <filter name="unreviewed" string="Unreviewed" domain="[('reviewed', '=', False)]"/>
+                <filter name="reviewed" string="Reviewed" domain="[('reviewed', '=', True)]"/>
+                <filter name="has_employee" string="Has Employee" domain="[('employee_id', '!=', False)]"/>
+                <separator/>
+                <filter name="today" string="Today" domain="[('created_at', '&gt;=', context_today().strftime('%Y-%m-%d 00:00:00'))]"/>
+                <filter name="this_week" string="This Week" domain="[('created_at', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d 00:00:00'))]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_device" string="Device" context="{'group_by': 'device_id'}"/>
+                    <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
+                    <filter name="group_reviewed" string="Review Status" context="{'group_by': 'reviewed'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Quarantine Records Action -->
+    <record id="action_quarantine_records" model="ir.actions.act_window">
+        <field name="name">Quarantined Records</field>
+        <field name="res_model">zkteco.quarantine</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_unreviewed': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No quarantined records
+            </p>
+            <p>
+                Invalid attendance records from Flask ADMS will appear here for manual review and correction.
+            </p>
+        </field>
+    </record>
+
+    <!-- Link Employee Wizard View -->
+    <record id="view_quarantine_link_wizard_form" model="ir.ui.view">
+        <field name="name">zkteco.quarantine.link.wizard.form</field>
+        <field name="model">zkteco.quarantine.link.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Link Employee">
+                <group>
+                    <field name="quarantine_id" invisible="1"/>
+                    <field name="user_id" readonly="1"/>
+                    <field name="employee_id"/>
+                    <field name="create_mapping"/>
+                    <field name="device_id" invisible="not create_mapping" required="create_mapping"/>
+                </group>
+                <footer>
+                    <button name="action_link" string="Link and Retry" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_quarantine_records"
+              name="Quarantine"
+              parent="menu_zkteco_configuration"
+              action="action_quarantine_records"
+              sequence="35"/>
+
+
+</odoo>

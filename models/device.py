@@ -1,0 +1,123 @@
+import logging
+from datetime import timedelta
+from odoo import models, fields, api, _
+
+_logger = logging.getLogger(__name__)
+
+class ZKTecoDevice(models.Model):
+    _name = 'zkteco.device'
+    _description = 'ZKTeco Device'
+
+    name = fields.Char(string='Device Name', required=True)
+    serial_number = fields.Char(string='Serial Number', required=True, copy=False)
+    ip_address = fields.Char(string='IP Address')
+    last_sync = fields.Datetime(string='Last Sync')
+
+    online_status = fields.Selection([
+        ('online', 'Online'),
+        ('offline', 'Offline'),
+    ], string='Status', compute='_compute_online_status', store=False)
+
+    user_mapping_ids = fields.One2many('zkteco.user.mapping', 'device_id', string='Device Users')
+
+    user_count = fields.Integer(
+        string='Users',
+        compute='_compute_counts',
+        store=False,
+    )
+    attendance_log_count = fields.Integer(
+        string='Punches',
+        compute='_compute_counts',
+        store=False,
+    )
+
+    # ── Computed Fields ────────────────────────────────────────────────
+
+    @api.depends('last_sync')
+    def _compute_online_status(self):
+        for device in self:
+            if device.last_sync and fields.Datetime.now() - device.last_sync < timedelta(seconds=60):
+                device.online_status = 'online'
+            else:
+                device.online_status = 'offline'
+
+    @api.depends('user_mapping_ids')
+    def _compute_counts(self):
+        att_obj = self.env['zkteco.attendance'].sudo()
+        for device in self:
+            device.user_count = len(device.user_mapping_ids)
+            device.attendance_log_count = att_obj.search_count([
+                ('device_id', '=', device.id)
+            ])
+
+    # ── Constraints ───────────────────────────────────────────────────
+
+    _sql_constraints = [
+        ('serial_number_unique', 'unique(serial_number)', 'The serial number must be unique!')
+    ]
+
+    # ── Smart Button Actions ───────────────────────────────────────────
+
+    def action_open_users(self):
+        """Smart button: open the user mapping list for this device."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Device Users — %s' % self.name,
+            'res_model': 'zkteco.user.mapping',
+            'view_mode': 'tree,form',
+            'domain': [('device_id', '=', self.id)],
+            'context': {'default_device_id': self.id},
+        }
+
+    def action_open_attendance(self):
+        """Smart button: open all raw attendance logs for this device."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Attendance Logs — %s' % self.name,
+            'res_model': 'zkteco.attendance',
+            'view_mode': 'tree,form',
+            'domain': [('device_id', '=', self.id)],
+            'context': {'default_device_id': self.id},
+        }
+
+    # ── Device Command Actions ─────────────────────────────────────────
+
+    def action_fetch_users(self):
+        """
+        Fetch all enrolled users from the device.
+        Proven command: DATA QUERY tablename=user  (result via /iclock/querydata)
+        """
+        for device in self:
+            self.env['zkteco.command.queue'].create({
+                'device_id': device.id,
+                'command_string': 'DATA QUERY tablename=user',
+            })
+            _logger.info("Device %s: queued user fetch command.", device.name)
+        return self._notification_success(_('Command sent — users will appear in the Device Users tab within seconds.'))
+
+    def action_fetch_logs(self):
+        """
+        Fetch all stored attendance logs from the device.
+        Using the transaction table (same proven protocol style as user query).
+        """
+        for device in self:
+            self.env['zkteco.command.queue'].create({
+                'device_id': device.id,
+                'command_string': 'DATA QUERY tablename=transaction',
+            })
+            _logger.info("Device %s: queued log fetch command.", device.name)
+        return self._notification_success(_('Command sent — attendance logs will arrive shortly.'))
+
+    def _notification_success(self, message):
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Command Queued'),
+                'message': message,
+                'type': 'success',
+                'sticky': False,
+            }
+        }

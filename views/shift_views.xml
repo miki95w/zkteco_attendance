@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<odoo>
+    <record id="view_zkteco_shift_form" model="ir.ui.view">
+        <field name="name">zkteco.shift.form</field>
+        <field name="model">zkteco.shift</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="is_rotating"/>
+                    </group>
+                    <group>
+                        <group string="Working Hours">
+                            <field name="start_time"/>
+                            <field name="end_time"/>
+                        </group>
+                        <group string="Grace Periods">
+                            <field name="grace_in"/>
+                            <field name="grace_out"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_zkteco_shift_tree" model="ir.ui.view">
+        <field name="name">zkteco.shift.tree</field>
+        <field name="model">zkteco.shift</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="start_time"/>
+                <field name="end_time"/>
+                <field name="grace_in"/>
+                <field name="grace_out"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_zkteco_shift" model="ir.actions.act_window">
+        <field name="name">Attendance Shifts</field>
+        <field name="res_model">zkteco.shift</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_zkteco_shift"
+              name="Shifts"
+              parent="menu_zkteco_configuration"
+              action="action_zkteco_shift"
+              sequence="30"/>
+
+    <record id="view_zkteco_emp_shift_form" model="ir.ui.view">
+        <field name="name">zkteco.employee.shift.form</field>
+        <field name="model">zkteco.employee.shift</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="employee_id"/>
+                        <field name="shift_id"/>
+                        <field name="date_start"/>
+                        <field name="date_end"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_zkteco_emp_shift_tree" model="ir.ui.view">
+        <field name="name">zkteco.employee.shift.tree</field>
+        <field name="model">zkteco.employee.shift</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="employee_id"/>
+                <field name="shift_id"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_zkteco_emp_shift" model="ir.actions.act_window">
+        <field name="name">Employee Shift Assignments</field>
+        <field name="res_model">zkteco.employee.shift</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_zkteco_emp_shift"
+              name="Employee Assignments"
+              parent="menu_zkteco_shift"
+              action="action_zkteco_emp_shift"
+              sequence="10"/>
+</odoo>

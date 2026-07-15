@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Dashboard Kanban View -->
+    <record id="view_attendance_dashboard_kanban" model="ir.ui.view">
+        <field name="name">zkteco.attendance.dashboard.kanban</field>
+        <field name="model">zkteco.attendance.dashboard</field>
+        <field name="arch" type="xml">
+            <kanban create="false" edit="false" delete="false" sample="false"
+                    class="o_kanban_dashboard">
+                <field name="total_expected"/>
+                <field name="present_count"/>
+                <field name="absent_count"/>
+                <field name="missed_punch_count"/>
+                <field name="on_leave_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <!--
+                            Force this kanban card to occupy the full row.
+                            Odoo wraps each record in a fixed-width flex item;
+                            the inline styles below break out of that constraint.
+                        -->
+                        <div style="width:100% !important; flex:1 1 100% !important;
+                                    max-width:100% !important; box-shadow:none !important;
+                                    border:none !important; background:transparent !important;
+                                    margin:0 !important; padding:16px !important;">
+
+                            <h5 class="text-muted mb-3" style="font-size:0.8rem; letter-spacing:0.08em; text-transform:uppercase;">
+                                Today's Attendance Overview
+                            </h5>
+
+                            <div class="row g-3">
+
+                                <!-- Total Expected -->
+                                <div class="col-12 col-sm-6 col-md-4 col-lg">
+                                    <div class="card h-100 text-center border-0 shadow-sm"
+                                         style="border-left:4px solid #6c757d !important; border-radius:10px; cursor:pointer;"
+                                         t-att-class="oe_kanban_global_click">
+                                        <div class="card-body p-3">
+                                            <div class="mb-2" style="font-size:1.8rem; color:#6c757d;">
+                                                <i class="fa fa-users" title="Total Expected"/>
+                                            </div>
+                                            <div class="text-muted fw-bold mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;">
+                                                Total Expected
+                                            </div>
+                                            <div class="fw-bold mb-3" style="font-size:2.2rem; line-height:1;">
+                                                <field name="total_expected"/>
+                                            </div>
+                                            <button name="action_view_all_today" type="object"
+                                                    class="btn btn-sm btn-outline-secondary w-100">
+                                                View All
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Present Today -->
+                                <div class="col-12 col-sm-6 col-md-4 col-lg">
+                                    <div class="card h-100 text-center border-0 shadow-sm"
+                                         style="border-left:4px solid #28a745 !important; border-radius:10px; cursor:pointer; background:#f6fff8;"
+                                         t-att-class="oe_kanban_global_click">
+                                        <div class="card-body p-3">
+                                            <div class="mb-2" style="font-size:1.8rem; color:#28a745;">
+                                                <i class="fa fa-user-check" title="Present Today"/>
+                                            </div>
+                                            <div class="fw-bold mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#28a745;">
+                                                Present Today
+                                            </div>
+                                            <div class="fw-bold mb-3" style="font-size:2.2rem; line-height:1; color:#28a745;">
+                                                <field name="present_count"/>
+                                            </div>
+                                            <button name="action_view_present_today" type="object"
+                                                    class="btn btn-sm btn-success w-100">
+                                                Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Absent Today -->
+                                <div class="col-12 col-sm-6 col-md-4 col-lg">
+                                    <div class="card h-100 text-center border-0 shadow-sm"
+                                         style="border-left:4px solid #dc3545 !important; border-radius:10px; cursor:pointer; background:#fff8f8;"
+                                         t-att-class="oe_kanban_global_click">
+                                        <div class="card-body p-3">
+                                            <div class="mb-2" style="font-size:1.8rem; color:#dc3545;">
+                                                <i class="fa fa-user-times" title="Absent Today"/>
+                                            </div>
+                                            <div class="fw-bold mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#dc3545;">
+                                                Absent Today
+                                            </div>
+                                            <div class="fw-bold mb-3" style="font-size:2.2rem; line-height:1; color:#dc3545;">
+                                                <field name="absent_count"/>
+                                            </div>
+                                            <button name="action_view_absent_today" type="object"
+                                                    class="btn btn-sm btn-danger w-100">
+                                                Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Missed Punch -->
+                                <div class="col-12 col-sm-6 col-md-4 col-lg">
+                                    <div class="card h-100 text-center border-0 shadow-sm"
+                                         style="border-left:4px solid #ffc107 !important; border-radius:10px; cursor:pointer; background:#fffdf0;"
+                                         t-att-class="oe_kanban_global_click">
+                                        <div class="card-body p-3">
+                                            <div class="mb-2" style="font-size:1.8rem; color:#ffc107;">
+                                                <i class="fa fa-clock-o" title="Missed Punch"/>
+                                            </div>
+                                            <div class="fw-bold mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#d39e00;">
+                                                Missed Punch
+                                            </div>
+                                            <div class="fw-bold mb-3" style="font-size:2.2rem; line-height:1; color:#d39e00;">
+                                                <field name="missed_punch_count"/>
+                                            </div>
+                                            <button name="action_view_missed_punch_today" type="object"
+                                                    class="btn btn-sm btn-warning w-100">
+                                                Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- On Leave -->
+                                <div class="col-12 col-sm-6 col-md-4 col-lg">
+                                    <div class="card h-100 text-center border-0 shadow-sm"
+                                         style="border-left:4px solid #17a2b8 !important; border-radius:10px; cursor:pointer; background:#f0fbff;"
+                                         t-att-class="oe_kanban_global_click">
+                                        <div class="card-body p-3">
+                                            <div class="mb-2" style="font-size:1.8rem; color:#17a2b8;">
+                                                <i class="fa fa-calendar" title="On Leave"/>
+                                            </div>
+                                            <div class="fw-bold mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#17a2b8;">
+                                                On Leave
+                                            </div>
+                                            <div class="fw-bold mb-3" style="font-size:2.2rem; line-height:1; color:#17a2b8;">
+                                                <field name="on_leave_count"/>
+                                            </div>
+                                            <button name="action_view_on_leave_today" type="object"
+                                                    class="btn btn-sm btn-info w-100 text-white">
+                                                Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div><!-- /row -->
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Dashboard Action -->
+    <record id="action_attendance_dashboard" model="ir.actions.act_window">
+        <field name="name">Attendance Dashboard</field>
+        <field name="res_model">zkteco.attendance.dashboard</field>
+        <field name="view_mode">kanban</field>
+        <field name="target">current</field>
+        <field name="help" type="html">
+            <p class="text-center">Real-time attendance KPIs for today.</p>
+        </field>
+    </record>
+
+    <!-- Dashboard Menu -->
+    <menuitem id="menu_attendance_dashboard"
+              name="Attendance Dashboard"
+              parent="menu_zkteco_root"
+              action="action_attendance_dashboard"
+              sequence="10"/>
+</odoo>

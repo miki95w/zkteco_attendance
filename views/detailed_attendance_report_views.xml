@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Detailed Attendance Report Tree View -->
+    <record id="view_detailed_attendance_report_tree" model="ir.ui.view">
+        <field name="name">zkteco.detailed.attendance.report.tree</field>
+        <field name="model">zkteco.detailed.attendance.report</field>
+        <field name="arch" type="xml">
+            <tree string="Attendance Records" 
+                  decoration-success="status == 'present'"
+                  decoration-danger="status == 'absent'"
+                  decoration-warning="status == 'incomplete'"
+                  decoration-info="status == 'on_leave'"
+                  create="false" 
+                  delete="false" 
+                  edit="false">
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="date"/>
+                <field name="status" widget="badge" 
+                       decoration-success="status == 'present'"
+                       decoration-danger="status == 'absent'"
+                       decoration-warning="status == 'incomplete'"
+                       decoration-info="status == 'on_leave'"/>
+                <field name="first_checkin" widget="datetime" optional="show"/>
+                <field name="last_checkout" widget="datetime" optional="show"/>
+                <field name="work_hours" string="Work Min" widget="integer" optional="show"/>
+                <field name="late_min" string="Late" optional="show"/>
+                <field name="early_min" string="Early Leave" optional="show"/>
+                <field name="late_minutes" string="Late (min)" widget="integer" 
+                       decoration-danger="late_minutes &gt; 0" optional="hide"/>
+                <field name="early_leave_minutes" string="Early (min)" widget="integer" 
+                       decoration-warning="early_leave_minutes &gt; 0" optional="hide"/>
+                <field name="overtime_hours" string="Overtime Hours" widget="float_time" optional="show"/>
+                <field name="approval_status" widget="badge" 
+                       decoration-info="approval_status == 'draft'"
+                       decoration-warning="approval_status == 'submitted'"
+                       decoration-success="approval_status == 'approved'"
+                       decoration-danger="approval_status == 'rejected'"
+                       optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Detailed Attendance Report Form View -->
+    <record id="view_detailed_attendance_report_form" model="ir.ui.view">
+        <field name="name">zkteco.detailed.attendance.report.form</field>
+        <field name="model">zkteco.detailed.attendance.report</field>
+        <field name="arch" type="xml">
+            <form string="Attendance Record Detail" create="false" delete="false" edit="false">
+                <sheet>
+                    <group>
+                        <group string="Employee Information">
+                            <field name="employee_id"/>
+                            <field name="department_id"/>
+                            <field name="job_id"/>
+                            <field name="date"/>
+                        </group>
+                        <group string="Attendance Status">
+                            <field name="status" widget="badge"/>
+                            <field name="approval_status" widget="badge"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Time Details">
+                            <field name="first_checkin" widget="datetime"/>
+                            <field name="last_checkout" widget="datetime"/>
+                            <field name="work_hours" string="Work Minutes"/>
+                            <field name="expected_hours" widget="float_time"/>
+                        </group>
+                        <group string="Punctuality">
+                            <field name="late_minutes" widget="integer"/>
+                            <field name="early_leave_minutes" widget="integer"/>
+                            <field name="overtime_hours" widget="float_time"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Shift Information">
+                        <field name="shift_id"/>
+                    </group>
+                    
+                    <group string="Remarks">
+                        <field name="remarks" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Detailed Attendance Report Search View -->
+    <record id="view_detailed_attendance_report_search" model="ir.ui.view">
+        <field name="name">zkteco.detailed.attendance.report.search</field>
+        <field name="model">zkteco.detailed.attendance.report</field>
+        <field name="arch" type="xml">
+            <search string="Search Attendance Records">
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="date"/>
+                
+                <!-- Status Filters -->
+                <filter name="filter_present" string="Present" 
+                        domain="[('status', '=', 'present')]" 
+                        help="Show present employees"/>
+                <filter name="filter_absent" string="Absent" 
+                        domain="[('status', '=', 'absent')]"
+                        help="Show absent employees"/>
+                <filter name="filter_incomplete" string="Incomplete" 
+                        domain="[('status', '=', 'incomplete')]"
+                        help="Show incomplete attendance (missed punch)"/>
+                <filter name="filter_on_leave" string="On Leave" 
+                        domain="[('status', '=', 'on_leave')]"
+                        help="Show employees on leave"/>
+                
+                <separator/>
+                
+                <!-- Punctuality Filters -->
+                <filter name="filter_late" string="Late Arrivals" 
+                        domain="[('late_minutes', '&gt;', 0)]"
+                        help="Show late arrivals"/>
+                <filter name="filter_early_leave" string="Early Leaves" 
+                        domain="[('early_leave_minutes', '&gt;', 0)]"
+                        help="Show early departures"/>
+                <filter name="filter_overtime" string="Overtime" 
+                        domain="[('overtime_hours', '&gt;', 0)]"
+                        help="Show overtime records"/>
+                
+                <separator/>
+                
+                <!-- Date Filters -->
+                <filter name="filter_today" string="Today" 
+                        domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_yesterday" string="Yesterday" 
+                        domain="[('date', '=', (context_today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_week" string="This Week" 
+                        domain="[('date', '&gt;=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+                <filter name="filter_this_month" string="This Month" 
+                        domain="[('date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
+                <filter name="filter_last_month" string="Last Month"
+                        domain="[('date', '&gt;=', (context_today().replace(day=1) - datetime.timedelta(days=1)).strftime('%Y-%m-01')),
+                                 ('date', '&lt;', context_today().strftime('%Y-%m-01'))]"/>
+                
+                <separator/>
+                
+                <!-- Approval Filters -->
+                <filter name="filter_draft" string="Draft" 
+                        domain="[('approval_status', '=', 'draft')]"/>
+                <filter name="filter_submitted" string="Submitted" 
+                        domain="[('approval_status', '=', 'submitted')]"/>
+                <filter name="filter_approved" string="Approved" 
+                        domain="[('approval_status', '=', 'approved')]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter name="group_date" string="Date" context="{'group_by': 'date'}"/>
+                    <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
+                    <filter name="group_department" string="Department" context="{'group_by': 'department_id'}"/>
+                    <filter name="group_status" string="Status" context="{'group_by': 'status'}"/>
+                    <filter name="group_shift" string="Shift" context="{'group_by': 'shift_id'}"/>
+                    <filter name="group_approval" string="Approval Status" context="{'group_by': 'approval_status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Detailed Attendance Report Pivot View -->
+    <record id="view_detailed_attendance_report_pivot" model="ir.ui.view">
+        <field name="name">zkteco.detailed.attendance.report.pivot</field>
+        <field name="model">zkteco.detailed.attendance.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Attendance Analysis">
+                <field name="date" type="row" interval="month"/>
+                <field name="department_id" type="row"/>
+                <field name="status" type="col"/>
+                <field name="work_hours" type="measure"/>
+                <field name="overtime_hours" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Detailed Attendance Report Graph View -->
+    <record id="view_detailed_attendance_report_graph" model="ir.ui.view">
+        <field name="name">zkteco.detailed.attendance.report.graph</field>
+        <field name="model">zkteco.detailed.attendance.report</field>
+        <field name="arch" type="xml">
+            <graph string="Attendance Statistics" type="bar">
+                <field name="date" interval="week"/>
+                <field name="status" type="col"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Detailed Attendance Report Action -->
+    <record id="action_detailed_attendance_report" model="ir.actions.act_window">
+        <field name="name">Attendance Records</field>
+        <field name="res_model">zkteco.detailed.attendance.report</field>
+        <field name="view_mode">tree,form,pivot,graph</field>
+        <field name="context">{'search_default_filter_this_month': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Detailed Attendance Records
+            </p>
+            <p>
+                View detailed attendance records with check-in/out times, worked hours, 
+                late arrivals, early leaves, and overtime information.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_detailed_attendance_report"
+              name="Detailed Analysis"
+              parent="menu_zkteco_reporting"
+              action="action_detailed_attendance_report"
+              sequence="80"/>
+
+</odoo>

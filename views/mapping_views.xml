@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ═══════════════════════════════════════════════════
+         USER MAPPING TREE (standalone menu)
+         ═══════════════════════════════════════════════════ -->
+    <record id="view_zkteco_mapping_tree" model="ir.ui.view">
+        <field name="name">zkteco.user.mapping.tree</field>
+        <field name="model">zkteco.user.mapping</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="employee_id != False"
+                  decoration-muted="employee_id == False"
+                  string="Device Users">
+                <field name="device_id" string="Device"/>
+                <field name="device_user_id" string="Device ID"/>
+                <field name="device_user_name" string="User Name"/>
+                <field name="employee_id" string="Linked Employee"
+                       options="{'no_create': True}"/>
+                <field name="last_punch" string="Last Punch"/>
+                <field name="attendance_count" string="Total Punches"/>
+                <button name="action_view_attendance"
+                        type="object"
+                        string="Logs"
+                        icon="fa-list"
+                        class="btn btn-sm btn-link"
+                        help="View raw attendance logs for this device user"/>
+                <button name="action_view_hr_attendance"
+                        type="object"
+                        string="HR Attendance"
+                        icon="fa-calendar-check-o"
+                        class="btn btn-sm btn-link"
+                        invisible="employee_id == False"
+                        help="View processed HR attendance for the linked employee"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════
+         USER MAPPING FORM
+         ═══════════════════════════════════════════════════ -->
+    <record id="view_zkteco_mapping_form" model="ir.ui.view">
+        <field name="name">zkteco.user.mapping.form</field>
+        <field name="model">zkteco.user.mapping</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_view_attendance"
+                            string="View Attendance Logs"
+                            type="object"
+                            class="btn btn-secondary"
+                            icon="fa-list"/>
+                    <button name="action_view_hr_attendance"
+                            string="View HR Attendance"
+                            type="object"
+                            class="btn btn-secondary"
+                            icon="fa-calendar"
+                            invisible="employee_id == False"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button"
+                                name="action_view_attendance"
+                                type="object"
+                                icon="fa-clock-o">
+                            <field name="attendance_count" widget="statinfo" string="Punches"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="device_user_name" placeholder="User Name"/></h1>
+                    </div>
+                    <group>
+                        <group string="Device Info">
+                            <field name="device_id" readonly="1"/>
+                            <field name="device_user_id" readonly="1"/>
+                        </group>
+                        <group string="Employee Link">
+                            <field name="employee_id"
+                                   options="{'no_create': True}"
+                                   placeholder="Link to an Odoo Employee…"/>
+                            <field name="last_punch" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════
+         ACTION + MENU
+         ═══════════════════════════════════════════════════ -->
+    <record id="action_zkteco_mapping" model="ir.actions.act_window">
+        <field name="name">Device Users</field>
+        <field name="res_model">zkteco.user.mapping</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No device users found yet.
+            </p>
+            <p>
+                Open a Device and click <strong>Get Users</strong> to pull the enrolled
+                user list from your ZKTeco device.
+            </p>
+        </field>
+    </record>
+
+    <!-- Server action to fetch all device users (appears in Action menu of list view) -->
+    <record id="action_server_fetch_all_device_users" model="ir.actions.server">
+        <field name="name">Get Device Users</field>
+        <field name="model_id" ref="model_zkteco_user_mapping"/>
+        <field name="binding_model_id" ref="model_zkteco_user_mapping"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">model.action_fetch_all_device_users()</field>
+    </record>
+
+    <menuitem id="menu_zkteco_mapping"
+              name="Device Users"
+              parent="menu_zkteco_root"
+              action="action_zkteco_mapping"
+              sequence="25"/>
+</odoo>

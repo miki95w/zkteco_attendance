@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_zkteco_attendance_tree" model="ir.ui.view">
+        <field name="name">zkteco.attendance.tree</field>
+        <field name="model">zkteco.attendance</field>
+        <field name="arch" type="xml">
+            <tree decoration-info="state == 'draft'" decoration-danger="state == 'error'">
+                <field name="timestamp"/>
+                <field name="device_id"/>
+                <field name="device_user_id"/>
+                <field name="employee_id"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_zkteco_attendance_search" model="ir.ui.view">
+        <field name="name">zkteco.attendance.search</field>
+        <field name="model">zkteco.attendance</field>
+        <field name="arch" type="xml">
+            <search string="Search Attendance Logs">
+                <field name="punch_date"/>
+                <field name="device_user_id"/>
+                <field name="employee_id"/>
+                <field name="device_id"/>
+                <separator/>
+                <filter string="Today" name="today" domain="[('punch_date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="This Month" name="this_month" domain="[('punch_date', '&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d')), ('punch_date', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Draft" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <filter string="Processed" name="processed" domain="[('state', '=', 'processed')]"/>
+                    <filter string="Error" name="error" domain="[('state', '=', 'error')]"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_zkteco_attendance_form" model="ir.ui.view">
+        <field name="name">zkteco.attendance.form</field>
+        <field name="model">zkteco.attendance</field>
+        <field name="arch" type="xml">
+                <form>
+                    <header>
+                        <button name="action_process_logs" string="Process Draft Logs" type="object" class="btn-primary" invisible="state != 'draft'"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="timestamp"/>
+                                <field name="device_id"/>
+                                <field name="device_user_id"/>
+                            </group>
+                            <group>
+                                <field name="event_type"/>
+                                <field name="state"/>
+                                <field name="employee_id" readonly="1"/>
+                                <field name="error_message" readonly="1"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Raw Data">
+                                <field name="raw_data" widget="text"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+        </field>
+    </record>
+
+    <record id="action_zkteco_attendance" model="ir.actions.act_window">
+        <field name="name">Attendance Logs</field>
+        <field name="res_model">zkteco.attendance</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_server_process_zkteco_logs" model="ir.actions.server">
+        <field name="name">Process Draft Logs</field>
+        <field name="model_id" ref="model_zkteco_attendance"/>
+        <field name="binding_model_id" ref="model_zkteco_attendance"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_process_logs()</field>
+    </record>
+
+    <menuitem id="menu_zkteco_attendance" name="Logs" parent="menu_zkteco_configuration" action="action_zkteco_attendance" sequence="20"/>
+</odoo>
