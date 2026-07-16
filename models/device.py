@@ -122,27 +122,57 @@ class ZKTecoDevice(models.Model):
     def action_fetch_users(self):
         """
         Fetch all enrolled users from the device.
-        Proven command: DATA QUERY tablename=user  (result via /iclock/querydata)
+        If active Flask ADMS config exists (cloud deployment), trigger via Flask API.
+        Otherwise, queue in the local Odoo command queue.
         """
-        for device in self:
-            self.env['zkteco.command.queue'].create({
-                'device_id': device.id,
-                'command_string': 'DATA QUERY tablename=user',
-            })
-            _logger.info("Device %s: queued user fetch command.", device.name)
+        config = self.env['zkteco.adms.config'].search([('active', '=', True)], limit=1)
+        if config:
+            for device in self:
+                try:
+                    config._make_request(config, f'/trigger/users/{device.serial_number}', method='GET')
+                    _logger.info("Device %s: triggered user fetch command via Flask ADMS API.", device.name)
+                except Exception as e:
+                    _logger.error("Failed to trigger user fetch via Flask ADMS API: %s", e)
+                    # Fallback to local queue
+                    self.env['zkteco.command.queue'].create({
+                        'device_id': device.id,
+                        'command_string': 'DATA QUERY tablename=user',
+                    })
+        else:
+            for device in self:
+                self.env['zkteco.command.queue'].create({
+                    'device_id': device.id,
+                    'command_string': 'DATA QUERY tablename=user',
+                })
+                _logger.info("Device %s: queued user fetch command locally.", device.name)
         return self._notification_success(_('Command sent — users will appear in the Device Users tab within seconds.'))
 
     def action_fetch_logs(self):
         """
         Fetch all stored attendance logs from the device.
-        Using the transaction table (same proven protocol style as user query).
+        If active Flask ADMS config exists (cloud deployment), trigger via Flask API.
+        Otherwise, queue in the local Odoo command queue.
         """
-        for device in self:
-            self.env['zkteco.command.queue'].create({
-                'device_id': device.id,
-                'command_string': 'DATA QUERY tablename=transaction',
-            })
-            _logger.info("Device %s: queued log fetch command.", device.name)
+        config = self.env['zkteco.adms.config'].search([('active', '=', True)], limit=1)
+        if config:
+            for device in self:
+                try:
+                    config._make_request(config, f'/trigger/attendance/{device.serial_number}', method='GET')
+                    _logger.info("Device %s: triggered log fetch command via Flask ADMS API.", device.name)
+                except Exception as e:
+                    _logger.error("Failed to trigger log fetch via Flask ADMS API: %s", e)
+                    # Fallback to local queue
+                    self.env['zkteco.command.queue'].create({
+                        'device_id': device.id,
+                        'command_string': 'DATA QUERY tablename=transaction',
+                    })
+        else:
+            for device in self:
+                self.env['zkteco.command.queue'].create({
+                    'device_id': device.id,
+                    'command_string': 'DATA QUERY tablename=transaction',
+                })
+                _logger.info("Device %s: queued log fetch command locally.", device.name)
         return self._notification_success(_('Command sent — attendance logs will arrive shortly.'))
 
     def _notification_success(self, message):

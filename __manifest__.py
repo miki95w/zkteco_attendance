@@ -24,7 +24,7 @@
         'python': ['requests'],
     },
     'data': [
-        'security/ir.model.access.csv',
+        'security/ir.model.accd cess.csv',
         'data/cron.xml',
         'data/dashboard_data.xml',
         'views/device_views.xml',
