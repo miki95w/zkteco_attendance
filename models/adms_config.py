@@ -1,7 +1,7 @@
 import logging
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
@@ -31,6 +31,7 @@ class ADMSConfig(models.Model):
     
     # Status
     last_sync = fields.Datetime(string='Last Sync', readonly=True)
+    last_error = fields.Text(string='Last Error', readonly=True)
     connection_status = fields.Selection([
         ('connected', 'Connected'),
         ('disconnected', 'Disconnected'),
@@ -55,7 +56,7 @@ class ADMSConfig(models.Model):
                 continue
             
             try:
-                response = self._make_request(config, '/health', method='GET', timeout=5)
+                response = self._make_request(config, '/api/test', method='GET', timeout=5)
                 if response and response.status_code == 200:
                     config.connection_status = 'connected'
                 else:
@@ -96,6 +97,31 @@ class ADMSConfig(models.Model):
                     except ValueError:
                         pass
         return metrics
+
+    def _parse_device_timestamp(self, timestamp_str):
+        """Parse a device timestamp and return an Odoo-safe naive datetime."""
+        for fmt in ['%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
+            try:
+                return datetime.strptime(timestamp_str, fmt)
+            except ValueError:
+                continue
+
+        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        if timestamp.tzinfo:
+            timestamp = timestamp.astimezone(timezone.utc).replace(tzinfo=None)
+        return timestamp
+
+    def _quarantine_record(self, record, reason, timestamp=None):
+        """Store a record that cannot safely become attendance yet."""
+        self.env['zkteco.quarantine'].sudo().create({
+            'user_id': str(record.get('user_id', 'unknown')),
+            'timestamp': timestamp or fields.Datetime.now(),
+            'event_type': int(record.get('event_type') or 0),
+            'device_id': str(record.get('device_id', 'unknown')),
+            'error_reason': reason,
+            'raw_data': json.dumps(record, default=str),
+            'reviewed': False,
+        })
     
     def _make_request(self, config, endpoint, method='GET', data=None, timeout=30):
         """Make HTTP request to Flask ADMS."""
@@ -135,15 +161,19 @@ class ADMSConfig(models.Model):
         """Test connection to Flask ADMS."""
         self.ensure_one()
         try:
-            response = self._make_request(self, '/health', method='GET', timeout=10)
+            response = self._make_request(self, '/api/test', method='GET', timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 message = _(
                     'Connection successful!\n\n'
                     'Status: %(status)s\n'
-                    'Database: %(database)s\n'
+                    'Authentication: %(authentication)s\n'
                     'Devices Connected: %(devices_connected)s'
-                ) % data
+                ) % {
+                    'status': data.get('status', 'ok'),
+                    'authentication': data.get('authentication', 'working'),
+                    'devices_connected': data.get('devices_connected', 0),
+                }
                 
                 return {
                     'type': 'ir.actions.client',
@@ -180,14 +210,31 @@ class ADMSConfig(models.Model):
                 
                 # Update local device records
                 for device_data in devices:
+                    sn = device_data.get('device_id')
+                    if not sn:
+                        continue
+                    last_heartbeat = device_data.get('last_heartbeat')
+                    try:
+                        last_sync = self._parse_device_timestamp(last_heartbeat) if last_heartbeat else fields.Datetime.now()
+                    except Exception:
+                        last_sync = fields.Datetime.now()
                     device = self.env['zkteco.device'].sudo().search([
-                        ('serial_number', '=', device_data.get('device_id'))
+                        ('serial_number', '=', sn)
                     ], limit=1)
                     
                     if device:
                         device.write({
                             'ip_address': device_data.get('ip_address'),
-                            'last_sync': device_data.get('last_heartbeat'),
+                            'last_sync': last_sync,
+                        })
+                    else:
+                        # Auto-create the device in Odoo
+                        self.env['zkteco.device'].sudo().create({
+                            'name': f'ZKTeco Device {sn}',
+                            'serial_number': sn,
+                            'ip_address': device_data.get('ip_address'),
+                            'is_active': True,
+                            'last_sync': last_sync,
                         })
                 
                 return {
@@ -204,29 +251,16 @@ class ADMSConfig(models.Model):
             raise UserError(_('Failed to get device status: %s') % str(e))
     
     def action_sync_users_to_devices(self):
-        """Trigger user synchronization to all devices."""
+        """Ask connected devices to send their current user list via Flask."""
         self.ensure_one()
         try:
-            # Get all employee mappings
-            user_mappings = self.env['zkteco.user.mapping'].search([])
-            employee_data = []
-            
-            for mapping in user_mappings:
-                employee_data.append({
-                    'employee_id': mapping.employee_id.id,
-                    'employee_name': mapping.employee_id.name,
-                    'device_user_id': mapping.device_user_id,
-                    'employee_code': mapping.employee_id.employee_id or mapping.employee_id.id
-                })
-            
-            # Get all connected devices
             devices = self.env['zkteco.device'].search([('is_active', '=', True)])
             device_sns = [d.serial_number for d in devices if d.serial_number]
             
             sync_data = {
-                'employee_ids': [emp['employee_id'] for emp in employee_data],
-                'employee_data': employee_data,
-                'device_sn': 'all_devices',  # Sync to all devices
+                'employee_ids': [],
+                'employee_data': [],
+                'device_sn': 'all_devices',
                 'target_devices': device_sns
             }
             
@@ -240,14 +274,12 @@ class ADMSConfig(models.Model):
             if response.status_code == 200:
                 data = response.json()
                 message = _(
-                    'User sync triggered successfully!\n\n'
+                    'Device user refresh queued successfully!\n\n'
                     'Status: %(status)s\n'
-                    'Employees: %(employee_count)s\n'
                     'Devices: %(device_count)s\n'
                     'Message: %(message)s'
                 ) % {
                     'status': data.get('status', 'Unknown'),
-                    'employee_count': len(employee_data),
                     'device_count': data.get('synced', 0),
                     'message': data.get('message', 'No message')
                 }
@@ -256,7 +288,7 @@ class ADMSConfig(models.Model):
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
                     'params': {
-                        'title': _('User Sync Successful'),
+                        'title': _('Device User Refresh Queued'),
                         'message': message,
                         'type': 'success',
                         'sticky': False,
@@ -301,7 +333,7 @@ class ADMSConfig(models.Model):
                 
                 processed_count = self._process_flask_attendance_data(attendance_records)
                 
-                self.write({'last_sync': fields.Datetime.now()})
+                self.write({'last_sync': fields.Datetime.now(), 'last_error': False})
                 
                 return {
                     'type': 'ir.actions.client',
@@ -335,19 +367,15 @@ class ADMSConfig(models.Model):
                     _logger.warning(f"Incomplete attendance record: {record}")
                     continue
                 
-                # Parse timestamp
                 try:
-                    # Try different timestamp formats
-                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
-                        try:
-                            timestamp = datetime.strptime(timestamp_str, fmt)
-                            break
-                        except ValueError:
-                            continue
-                    else:
-                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    timestamp = self._parse_device_timestamp(timestamp_str)
                 except (ValueError, TypeError) as e:
                     _logger.warning(f"Invalid timestamp format: {timestamp_str}")
+                    self._quarantine_record(
+                        record,
+                        f'Invalid timestamp format: {timestamp_str}',
+                    )
+                    quarantine_count += 1
                     continue
                 
                 # Find device
@@ -368,26 +396,31 @@ class ADMSConfig(models.Model):
                 
                 # Find employee mapping
                 user_mapping = self.env['zkteco.user.mapping'].search([
-                    ('device_user_id', '=', str(user_id))
+                    ('device_user_id', '=', str(user_id)),
+                    ('device_id', '=', device.id),
                 ], limit=1)
                 
                 if not user_mapping:
-                    # Create quarantine record
-                    self.env['zkteco.quarantine'].create({
-                        'user_id': str(user_id),
-                        'timestamp': timestamp,
-                        'event_type': event_type,
-                        'device_id': str(device_id),
-                        'error_reason': f'No employee mapping found for device user ID: {user_id}',
-                        'raw_data': json.dumps(record),
-                        'reviewed': False,
-                    })
+                    self._quarantine_record(
+                        record,
+                        f'No employee mapping found for device {device.serial_number} user ID: {user_id}',
+                        timestamp,
+                    )
+                    quarantine_count += 1
+                    continue
+
+                if not user_mapping.employee_id:
+                    self._quarantine_record(
+                        record,
+                        f'Device user ID {user_id} is mapped on {device.serial_number} but has no linked employee.',
+                        timestamp,
+                    )
                     quarantine_count += 1
                     continue
                 
                 # Check for duplicate
                 existing = self.env['zkteco.attendance'].search([
-                    ('employee_id', '=', user_mapping.employee_id.id),
+                    ('device_user_id', '=', str(user_id)),
                     ('timestamp', '=', timestamp),
                     ('device_id', '=', device.id),
                 ], limit=1)
@@ -396,14 +429,14 @@ class ADMSConfig(models.Model):
                     continue  # Skip duplicate
                 
                 # Create attendance record
-                attendance_record = self.env['zkteco.attendance'].create({
+                self.env['zkteco.attendance'].create({
                     'device_id': device.id,
                     'device_user_id': str(user_id),
                     'timestamp': timestamp,
                     'event_type': event_type,
                     'employee_id': user_mapping.employee_id.id,
                     'state': 'draft',
-                    'raw_data': json.dumps(record),
+                    'raw_data': json.dumps(record, default=str),
                 })
                 
                 processed_count += 1
@@ -412,15 +445,7 @@ class ADMSConfig(models.Model):
             except Exception as e:
                 _logger.error(f"Error processing attendance record {record}: {e}")
                 # Create quarantine record for processing errors
-                self.env['zkteco.quarantine'].create({
-                    'user_id': record.get('user_id', 'unknown'),
-                    'timestamp': fields.Datetime.now(),
-                    'event_type': record.get('event_type', 0),
-                    'device_id': record.get('device_id', 'unknown'),
-                    'error_reason': f'Processing error: {str(e)}',
-                    'raw_data': json.dumps(record),
-                    'reviewed': False,
-                })
+                self._quarantine_record(record, f'Processing error: {str(e)}')
                 quarantine_count += 1
                 continue
         
@@ -491,7 +516,6 @@ class ADMSConfig(models.Model):
             except Exception as e:
                 _logger.error(f"Auto-sync failed for config {config.name}: {e}")
                 config.write({
-                    'connection_status': 'error',
                     'last_error': f'Auto-sync error: {str(e)}'
                 })
     
@@ -540,9 +564,12 @@ class ADMSConfig(models.Model):
             raise UserError(_('Failed to fetch device users: %s') % str(e))
 
     def _parse_kv_line(self, line):
-        """Parse a tab-separated key=value line into a lowercase dict."""
+        """Parse a tab-separated or ampersand-separated key=value line."""
         parts = {}
-        for item in line.strip().split("\t"):
+        tokens = []
+        for chunk in line.strip().split("\t"):
+            tokens.extend(chunk.split("&"))
+        for item in tokens:
             item = item.strip()
             if "=" in item:
                 k, v = item.split("=", 1)

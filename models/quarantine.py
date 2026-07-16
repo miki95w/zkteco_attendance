@@ -17,7 +17,7 @@ class ZKTecoQuarantine(models.Model):
     timestamp = fields.Datetime(string='Timestamp')
     event_type = fields.Integer(string='Event Type')
     device_id = fields.Char(string='Device ID')
-    raw_data = fields.Binary(string='Raw Data')
+    raw_data = fields.Text(string='Raw Data')
     
     # Error information
     error_reason = fields.Text(string='Error Reason', required=True)

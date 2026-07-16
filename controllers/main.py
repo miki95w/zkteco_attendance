@@ -1,6 +1,8 @@
+import requests
 from odoo import http, fields
 from odoo.http import request, Response
 import logging
+import json
 
 _logger = logging.getLogger(__name__)
 
@@ -32,12 +34,16 @@ class ZKTecoController(http.Controller):
         return device
 
     def _parse_kv_line(self, line):
-        """Parse a tab-separated key=value line into a lowercase dict."""
+        """Parse a tab-separated OR &-separated key=value line into a lowercase dict."""
         parts = {}
-        for item in line.strip().split("\t"):
-            item = item.strip()
-            if "=" in item:
-                k, v = item.split("=", 1)
+        # Split by tab first, then by &
+        tokens = []
+        for chunk in line.strip().split('\t'):
+            for item in chunk.split('&'):
+                tokens.append(item.strip())
+        for item in tokens:
+            if '=' in item:
+                k, v = item.split('=', 1)
                 parts[k.strip().lower()] = v.strip()
         return parts
 
@@ -60,7 +66,7 @@ class ZKTecoController(http.Controller):
             "TransTimes=00:00;23:59\n"
             "TransInterval=1\n"
             "TransFlag=1111111111\n"
-            "TimeZone=1\n"
+            "TimeZone=3\n"
             "OK\n"
         )
         return Response(response_text, content_type='text/plain')
@@ -112,6 +118,10 @@ class ZKTecoController(http.Controller):
         _logger.info(
             f"[ZKTeco] 📬 DEVICECMD ACK from SN: {sn} | {decoded_data[:300].strip()}"
         )
+        # If this is a user data response, process it
+        if 'pin=' in decoded_data.lower():
+            device = self._get_or_create_device(sn)
+            self._process_users(device, decoded_data)
         return Response("OK\n", content_type='text/plain')
 
     # ------------------------------------------------------------------
@@ -123,7 +133,6 @@ class ZKTecoController(http.Controller):
             return Response("OK\n", content_type='text/plain')
 
         sn = request.params.get("SN", "")
-        # The /iclock/querydata endpoint uses 'tablename=', while /iclock/cdata uses 'table='
         table = (request.params.get("table") or request.params.get("tablename") or "").lower()
         raw_body = request.httprequest.get_data()
         decoded_data = raw_body.decode("utf-8", errors="ignore")
@@ -133,25 +142,19 @@ class ZKTecoController(http.Controller):
             f"--- PAYLOAD ---\n{decoded_data[:600].strip()}\n---------------"
         )
 
-        # Ignore door/sensor state events — not attendance
+        # Ignore door/sensor state events
         if table == 'rtstate':
             return Response("OK\n", content_type='text/plain')
 
-        device = request.env['zkteco.device'].sudo().search(
-            [('serial_number', '=', sn)], limit=1
-        )
-        if not device:
-            _logger.warning(f"[ZKTeco] ⚠️ No device record for SN: {sn}")
-            return Response("OK\n", content_type='text/plain')
-
+        device = self._get_or_create_device(sn)
         device.write({'last_sync': fields.Datetime.now()})
 
         # ── USER TABLE ──────────────────────────────────────────────────
         if 'user' in table:
             self._process_users(device, decoded_data)
 
-        # ── ATTENDANCE LOGS (rtlog / attlog / transaction) ──────────────
-        elif 'log' in table or 'att' in table or 'transaction' in table:
+        # ── ATTENDANCE LOGS (rtlog / attlog / transaction / rtlog) ──────
+        elif any(t in table for t in ['log', 'att', 'transaction', 'rtlog']):
             self._process_attendance(device, decoded_data)
 
         else:
@@ -160,13 +163,124 @@ class ZKTecoController(http.Controller):
         return Response("OK\n", content_type='text/plain')
 
     # ------------------------------------------------------------------
+    # FLASK ADMS PUSH ENDPOINT (Flask calls this to push attendance to Odoo)
+    # ------------------------------------------------------------------
+    @http.route('/zkteco/push/attendance', type='http', auth='none', methods=['POST'], csrf=False)
+    def flask_push_attendance(self, **kwargs):
+        """
+        Flask ADMS calls this endpoint to push attendance records directly into Odoo.
+        This makes the integration real-time without relying on polling.
+        Payload format:
+        {
+            "api_key": "...",
+            "records": [
+                {"device_id": "SN123", "user_id": "5", "timestamp": "2026-07-16 10:54:12", "event_type": 0}
+            ]
+        }
+        """
+        try:
+            import json as _json
+            raw = request.httprequest.get_data()
+            body = _json.loads(raw.decode('utf-8', errors='ignore'))
+            api_key = body.get('api_key', '')
+
+            # Validate API key against any active ADMS config
+            config = request.env['zkteco.adms.config'].sudo().search([
+                ('api_key', '=', api_key),
+                ('active', '=', True)
+            ], limit=1)
+
+            if not config:
+                _logger.warning(f"[ZKTeco] Push rejected — invalid API key")
+                return Response('{"status":"error","message":"Unauthorized"}', content_type='application/json', status=401)
+
+            records = body.get('records', [])
+            if not records:
+                return Response('{"status":"ok","processed":0}', content_type='application/json')
+
+            processed = config._process_flask_attendance_data(records)
+            _logger.info(f"[ZKTeco] 📤 Flask push: processed {processed} records")
+            return Response(f'{{"status":"ok","processed":{processed}}}', content_type='application/json')
+
+        except Exception as e:
+            _logger.error(f"[ZKTeco] Flask push error: {e}")
+            return Response(f'{{"status":"error","message":"{str(e)}"}}', content_type='application/json', status=500)
+
+    @http.route('/zkteco/push/users', type='http', auth='none', methods=['POST'], csrf=False)
+    def flask_push_users(self, **kwargs):
+        """
+        Flask ADMS calls this endpoint to push user data directly into Odoo.
+        Payload format:
+        {
+            "api_key": "...",
+            "device_sn": "SN123",
+            "users": [{"pin": "5", "name": "John"}]
+        }
+        """
+        try:
+            import json as _json
+            raw = request.httprequest.get_data()
+            body = _json.loads(raw.decode('utf-8', errors='ignore'))
+            api_key = body.get('api_key', '')
+
+            config = request.env['zkteco.adms.config'].sudo().search([
+                ('api_key', '=', api_key),
+                ('active', '=', True)
+            ], limit=1)
+
+            if not config:
+                return Response('{"status":"error","message":"Unauthorized"}', content_type='application/json', status=401)
+
+            device_sn = body.get('device_sn', '')
+            users = body.get('users', [])
+
+            device = request.env['zkteco.device'].sudo().search([
+                ('serial_number', '=', device_sn)
+            ], limit=1)
+
+            if not device:
+                # Auto-create the device
+                device = request.env['zkteco.device'].sudo().create({
+                    'name': f'ZKTeco {device_sn}',
+                    'serial_number': device_sn,
+                    'last_sync': fields.Datetime.now(),
+                })
+
+            count = 0
+            mapping_obj = request.env['zkteco.user.mapping'].sudo()
+            for user in users:
+                pin = str(user.get('pin', '')).strip()
+                name = user.get('name', '')
+                if not pin:
+                    continue
+                mapping = mapping_obj.search([
+                    ('device_user_id', '=', pin),
+                    ('device_id', '=', device.id)
+                ], limit=1)
+                if not mapping:
+                    mapping_obj.create({
+                        'device_user_id': pin,
+                        'device_user_name': name,
+                        'device_id': device.id,
+                    })
+                    count += 1
+                else:
+                    mapping.write({'device_user_name': name})
+
+            return Response(f'{{"status":"ok","processed":{count}}}', content_type='application/json')
+
+        except Exception as e:
+            _logger.error(f"[ZKTeco] Flask user push error: {e}")
+            return Response(f'{{"status":"error","message":"{str(e)}"}}', content_type='application/json', status=500)
+
+    # ------------------------------------------------------------------
     # HELPERS
     # ------------------------------------------------------------------
     def _process_users(self, device, data):
         """
         Parse user table records. Handles two formats:
-        1. DATA QUERY tablename=user response (from /iclock/querydata):
-           'user uid=2\tcardno=\tpin=2\tpassword=\tgroup=1\t...\tname=Ff\t...'
+        1. DATA QUERY tablename=user response:
+           'user uid=2\tcardno=\tpin=2\tpassword=\tgroup=1\t...name=Ff\t...'
         2. Legacy format: bare key=value tab-separated lines
         """
         mapping_obj = request.env['zkteco.user.mapping'].sudo()
@@ -176,10 +290,8 @@ class ZKTecoController(http.Controller):
             if not line or any(line.startswith(x) for x in ["ID=", "Return=", "OK"]):
                 continue
 
-            # Format 1: lines start with 'user ' followed by tab-separated key=value pairs
-            # e.g. 'user uid=2\tcardno=\tpin=2\tpassword=\tname=Ff\t...'
             if line.lower().startswith('user '):
-                line = line[5:]  # strip leading 'user '
+                line = line[5:]
 
             kv = self._parse_kv_line(line)
             pin = kv.get("pin")
@@ -224,7 +336,7 @@ class ZKTecoController(http.Controller):
 
             kv = self._parse_kv_line(line)
 
-            # F22 key=value format
+            # F22 key=value format — prefer this
             timestamp_str = kv.get("time")
             pin = kv.get("pin")
             state_raw = kv.get("inoutstatus") or kv.get("event") or "0"
@@ -267,5 +379,18 @@ class ZKTecoController(http.Controller):
 
             except Exception as e:
                 _logger.error(f"[ZKTeco] ❌ Error on line: '{line}' | {e}")
+
+        # Auto-process: link employee + create hr.attendance
+        if count > 0:
+            new_drafts = att_obj.search([
+                ('state', '=', 'draft'),
+                ('device_id', '=', device.id),
+            ])
+            if new_drafts:
+                try:
+                    new_drafts.action_process_logs()
+                    _logger.info(f"[ZKTeco] ✅ Auto-processed {count} new attendance records for device {device.name}")
+                except Exception as e:
+                    _logger.error(f"[ZKTeco] ❌ Auto-process failed: {e}")
 
         _logger.warning(f"[ZKTeco] ✅ Attendance done — {count} new records stored.")

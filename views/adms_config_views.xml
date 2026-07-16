@@ -11,7 +11,7 @@
                     <button name="action_sync_now" string="Fetch Attendance Data" type="object" class="btn-success"/>
                     <button name="action_fetch_device_users" string="Fetch Device Users" type="object" class="btn-primary"/>
                     <button name="action_get_device_status" string="Refresh Device Status" type="object"/>
-                    <button name="action_sync_users_to_devices" string="Sync Users to Devices" type="object"/>
+                    <button name="action_sync_users_to_devices" string="Refresh Device Users" type="object"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -65,7 +65,7 @@
                                                 </div>
                                                 <div class="d-flex mb-0">
                                                     <div class="me-3 text-primary"><i class="fa fa-sync fa-lg"/></div>
-                                                    <div><strong class="d-block">Sync Users</strong><span class="text-muted small">Push all Odoo employees to connected devices</span></div>
+                                                    <div><strong class="d-block">Refresh Device Users</strong><span class="text-muted small">Ask connected devices to send their current user list for Odoo mapping</span></div>
                                                 </div>
                                             </div>
                                         </div>
