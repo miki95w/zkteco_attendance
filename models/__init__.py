@@ -14,4 +14,3 @@ from . import attendance_record
 from . import detailed_attendance_report
 from . import attendance_dashboard
 from . import cloud_integration
-from . import attendance_dashboard
