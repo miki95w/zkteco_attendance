@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Work Policy Tree View -->
+    <record id="view_zkteco_work_policy_tree" model="ir.ui.view">
+        <field name="name">zkteco.work.policy.tree</field>
+        <field name="model">zkteco.work.policy</field>
+        <field name="arch" type="xml">
+            <tree string="Work Policies">
+                <field name="name"/>
+                <field name="policy_type"/>
+                <field name="start_time" widget="float_time"/>
+                <field name="end_time" widget="float_time"/>
+                <field name="overtime_begin_time" widget="float_time"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Work Policy Form View -->
+    <record id="view_zkteco_work_policy_form" model="ir.ui.view">
+        <field name="name">zkteco.work.policy.form</field>
+        <field name="model">zkteco.work.policy</field>
+        <field name="arch" type="xml">
+            <form string="Work Policy">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Standard 9 to 5"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Policy Parameters">
+                            <field name="policy_type"/>
+                        </group>
+                        <group string="Shift Timing Configuration" invisible="policy_type == 'flexible'">
+                            <field name="start_time" widget="float_time"/>
+                            <field name="end_time" widget="float_time"/>
+                            <field name="overtime_begin_time" widget="float_time"/>
+                            <field name="grace_in"/>
+                            <field name="grace_out"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Associated Shifts" name="shifts">
+                            <field name="shift_ids">
+                                <tree string="Shifts">
+                                    <field name="name"/>
+                                    <field name="start_time" widget="float_time"/>
+                                    <field name="end_time" widget="float_time"/>
+                                    <field name="grace_in"/>
+                                    <field name="grace_out"/>
+                                    <field name="is_rotating"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Assigned Employees" name="employees">
+                            <field name="employee_ids" widget="many2many">
+                                <tree string="Employees">
+                                    <field name="name"/>
+                                    <field name="department_id"/>
+                                    <field name="job_id"/>
+                                    <field name="zkteco_device_id"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Work Policy Window Action -->
+    <record id="action_zkteco_work_policy" model="ir.actions.act_window">
+        <field name="name">Work Policies</field>
+        <field name="res_model">zkteco.work.policy</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Define Work Policies
+            </p>
+            <p>
+                Configure different policies (Regular, Night Shift, Flexible) to manage shift timings and overtime calculations.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_zkteco_work_policy"
+              name="Work Policies"
+              parent="menu_zkteco_configuration"
+              action="action_zkteco_work_policy"
+              sequence="25"/>
+</odoo>
