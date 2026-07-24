@@ -127,7 +127,7 @@
     <!-- ═══════════════════════════════════════════════════
          MENUS
          ═══════════════════════════════════════════════════ -->
-    <menuitem id="menu_zkteco_root" name="ZKTeco" sequence="10" web_icon="fa-fingerprint,#4C5B85,#ffffff"/>
-    <menuitem id="menu_zkteco_device" name="Devices" parent="menu_zkteco_root" action="action_zkteco_device" sequence="10"/>
-    <menuitem id="menu_zkteco_configuration" name="Configuration" parent="menu_zkteco_root" sequence="100" groups="base.group_system"/>
+    <menuitem id="menu_zkteco_root" name="ZKTeco" sequence="10" web_icon="fa-fingerprint,#4C5B85,#ffffff" groups="zkteco_attendance.group_zkteco_user"/>
+    <menuitem id="menu_zkteco_configuration" name="Configuration" parent="menu_zkteco_root" sequence="100" groups="zkteco_attendance.group_zkteco_admin"/>
+    <menuitem id="menu_zkteco_device" name="Devices" parent="menu_zkteco_configuration" action="action_zkteco_device" sequence="10" groups="zkteco_attendance.group_zkteco_admin"/>
 </odoo>
