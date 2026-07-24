@@ -202,6 +202,30 @@ class AttendanceDashboard(models.Model):
             }
         }
 
+    def action_view_on_leave_today(self):
+        """Open employees on leave today."""
+        today = fields.Date.today()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'On Leave Today',
+            'res_model': 'zkteco.attendance.record',
+            'view_mode': 'tree,form',
+            'domain': [('date', '=', today), ('status', '=', 'on_leave')],
+            'target': 'current',
+        }
+
+    def action_view_early_leaves_today(self):
+        """Open employees who left early today."""
+        today = fields.Date.today()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Early Departures Today',
+            'res_model': 'zkteco.attendance.record',
+            'view_mode': 'tree,form',
+            'domain': [('date', '=', today), ('early_departure', '=', True)],
+            'target': 'current',
+        }
+
 
 class AttendanceDashboardWizard(models.TransientModel):
     """Wizard to display attendance dashboard."""
