@@ -8,6 +8,7 @@
             <xpath expr="//notebook/page[@name='hr_settings']" position="inside">
                 <group string="ZKTeco Attendance">
                     <field name="zkteco_device_id"/>
+                    <field name="work_policy_id"/>
                 </group>
             </xpath>
             <xpath expr="//notebook" position="inside">
