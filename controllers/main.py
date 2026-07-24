@@ -33,6 +33,32 @@ class ZKTecoController(http.Controller):
             device.write({'last_sync': fields.Datetime.now()})
         return device
 
+    def _parse_timestamp(self, ts_str):
+        """Robustly parse timestamp strings from ZKTECO devices."""
+        if not ts_str:
+            return False
+
+        # Try common ZKTECO formats
+        formats = [
+            '%Y-%m-%d %H:%M:%S',
+            '%Y/%m/%d %H:%M:%S',
+            '%d/%m/%Y %H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S',
+        ]
+
+        for fmt in formats:
+            try:
+                from datetime import datetime
+                return fields.Datetime.to_datetime(datetime.strptime(ts_str.strip(), fmt))
+            except (ValueError, TypeError):
+                continue
+
+        # Fallback to Odoo's from_string
+        try:
+            return fields.Datetime.from_string(ts_str)
+        except Exception:
+            return False
+
     def _parse_kv_line(self, line):
         """Parse a tab-separated OR &-separated key=value line into a lowercase dict."""
         parts = {}
@@ -48,124 +74,128 @@ class ZKTecoController(http.Controller):
         return parts
 
     # ------------------------------------------------------------------
-    # HANDSHAKE
+    # LEGACY RAW DEVICE ENDPOINTS (RESTRICTED UNDER RELAY ARCHITECTURE)
     # ------------------------------------------------------------------
     @http.route('/iclock/registry', type='http', auth='none', methods=['GET', 'POST'], csrf=False)
     def adms_registry(self, **kwargs):
-        sn = request.params.get("SN", "")
-        _logger.info(f"[ZKTeco] 🔄 REGISTRY from SN: {sn}")
-        if sn:
-            self._get_or_create_device(sn)
-        response_text = (
-            "RegistryCode=1\n"
-            "ServerVersion=3.1.2\n"
-            "ServerName=OdooADMS\n"
-            "PushVersion=3.1.2\n"
-            "ErrorDelay=60\n"
-            "Delay=10\n"
-            "TransTimes=00:00;23:59\n"
-            "TransInterval=1\n"
-            "TransFlag=1111111111\n"
-            "TimeZone=3\n"
-            "OK\n"
-        )
-        return Response(response_text, content_type='text/plain')
+        return Response("Forbidden: Direct public access to raw ADMS registry is disabled on the VPS.", status=403, content_type='text/plain')
 
     @http.route('/iclock/push', type='http', auth='none', methods=['POST'], csrf=False)
     def adms_push(self, **kwargs):
-        return Response(
-            "ServerVersion=3.1.2\nServerName=OdooADMS\nPushVersion=3.1.2\nRegistryCode=1\nOK\n",
-            content_type='text/plain'
-        )
+        return Response("Forbidden: Direct public access to raw ADMS push is disabled on the VPS.", status=403, content_type='text/plain')
 
     @http.route('/iclock/ping', type='http', auth='none', methods=['GET', 'POST'], csrf=False)
     def adms_ping(self, **kwargs):
-        return Response("OK\n", content_type='text/plain')
+        return Response("Forbidden: Direct public access to raw ADMS ping is disabled on the VPS.", status=403, content_type='text/plain')
 
-    # ------------------------------------------------------------------
-    # HEARTBEAT & COMMAND DISPATCH
-    # ------------------------------------------------------------------
     @http.route('/iclock/getrequest', type='http', auth='none', methods=['GET', 'POST'], csrf=False)
     def poll_commands(self, **kwargs):
-        sn = request.params.get("SN", "")
-        if not sn:
-            return Response("OK\n", content_type='text/plain')
+        return Response("Forbidden: Direct public access to raw ADMS command polling is disabled on the VPS.", status=403, content_type='text/plain')
 
-        device = self._get_or_create_device(sn)
-
-        pending_cmd = request.env['zkteco.command.queue'].sudo().search([
-            ('device_id', '=', device.id),
-            ('state', '=', 'pending')
-        ], order='create_date asc', limit=1)
-
-        if pending_cmd:
-            cmd_id = _next_cmd_id()
-            cmd_payload = f"C:{cmd_id}:{pending_cmd.command_string}\n"
-            _logger.warning(f"[ZKTeco] 🚀 DISPATCHING to SN {sn}: {cmd_payload.strip()}")
-            pending_cmd.write({'state': 'sent'})
-            return Response(cmd_payload, content_type='text/plain')
-
-        return Response("OK\n", content_type='text/plain')
-
-    # ------------------------------------------------------------------
-    # COMMAND ACKNOWLEDGEMENT (device confirms command was received)
-    # ------------------------------------------------------------------
     @http.route('/iclock/devicecmd', type='http', auth='none', methods=['POST'], csrf=False)
     def receive_command_result(self, **kwargs):
-        sn = request.params.get("SN", "")
-        raw_body = request.httprequest.get_data()
-        decoded_data = raw_body.decode("utf-8", errors="ignore")
-        _logger.info(
-            f"[ZKTeco] 📬 DEVICECMD ACK from SN: {sn} | {decoded_data[:300].strip()}"
-        )
-        # If this is a user data response, process it
-        if 'pin=' in decoded_data.lower():
-            device = self._get_or_create_device(sn)
-            self._process_users(device, decoded_data)
-        return Response("OK\n", content_type='text/plain')
+        return Response("Forbidden: Direct public access to raw ADMS command results is disabled on the VPS.", status=403, content_type='text/plain')
 
-    # ------------------------------------------------------------------
-    # DATA INGESTION (all push data comes here)
-    # ------------------------------------------------------------------
     @http.route(['/iclock/cdata', '/iclock/querydata'], type='http', auth='none', methods=['GET', 'POST'], csrf=False)
     def receive_data(self, **kwargs):
-        if request.httprequest.method == 'GET':
-            return Response("OK\n", content_type='text/plain')
+        return Response("Forbidden: Direct public access to raw ADMS data ingestion is disabled on the VPS.", status=403, content_type='text/plain')
 
-        sn = request.params.get("SN", "")
-        table = (request.params.get("table") or request.params.get("tablename") or "").lower()
-        raw_body = request.httprequest.get_data()
-        decoded_data = raw_body.decode("utf-8", errors="ignore")
+    # ------------------------------------------------------------------
+    # FLASK MIDDLEWARE COMMAND POLLING & ACK
+    # ------------------------------------------------------------------
+    @http.route('/zkteco/api/commands', type='http', auth='public', methods=['GET'], csrf=False)
+    def flask_poll_commands(self, **kwargs):
+        """
+        Flask ADMS calls this endpoint to poll pending commands from Odoo.
+        Returns a list of commands for the middleware to forward to the devices.
+        Authentication: api_key query parameter or Authorization header.
+        """
+        try:
+            api_key = request.params.get('api_key') or request.httprequest.headers.get('Authorization')
+            if api_key and api_key.startswith('Bearer '):
+                api_key = api_key[7:]
+            
+            if not api_key:
+                return Response('{"status":"error","message":"Unauthorized: Missing API Key"}', content_type='application/json', status=401)
+                
+            config = request.env['zkteco.adms.config'].sudo().search([
+                ('api_key', '=', api_key),
+                ('active', '=', True)
+            ], limit=1)
+            
+            if not config:
+                return Response('{"status":"error","message":"Unauthorized"}', content_type='application/json', status=401)
+            
+            # Find all pending commands in the queue
+            pending_cmds = request.env['zkteco.command.queue'].sudo().search([
+                ('state', '=', 'pending')
+            ], order='create_date asc')
+            
+            # Group by device
+            cmds_data = []
+            for cmd in pending_cmds:
+                cmds_data.append({
+                    'id': cmd.id,
+                    'device_sn': cmd.device_id.serial_number,
+                    'command_string': cmd.command_string
+                })
+                
+            # Update passive last_sync for the config since Flask is calling us
+            config.write({'last_sync': fields.Datetime.now()})
+            
+            return Response(json.dumps({
+                'status': 'ok',
+                'commands': cmds_data
+            }), content_type='application/json')
+            
+        except Exception as e:
+            _logger.error(f"[ZKTeco] Flask command poll error: {e}")
+            return Response(json.dumps({
+                'status': 'error',
+                'message': str(e)
+            }), content_type='application/json', status=500)
 
-        _logger.warning(
-            f"[ZKTeco] 📥 CDATA — SN: {sn} | table: '{table}' | {len(decoded_data)} bytes\n"
-            f"--- PAYLOAD ---\n{decoded_data[:600].strip()}\n---------------"
-        )
+    @http.route('/zkteco/api/commands/ack', type='http', auth='public', methods=['POST'], csrf=False)
+    def flask_ack_commands(self, **kwargs):
+        """
+        Flask ADMS calls this to acknowledge that commands have been received/processed.
+        Marks them as 'sent' in the Odoo database.
+        """
+        try:
+            import json as _json
+            raw = request.httprequest.get_data()
+            body = _json.loads(raw.decode('utf-8', errors='ignore'))
+            api_key = body.get('api_key', '')
+            
+            if not api_key:
+                return Response('{"status":"error","message":"Unauthorized: Missing API Key"}', content_type='application/json', status=401)
 
-        # Ignore door/sensor state events
-        if table == 'rtstate':
-            return Response("OK\n", content_type='text/plain')
-
-        device = self._get_or_create_device(sn)
-        device.write({'last_sync': fields.Datetime.now()})
-
-        # ── USER TABLE ──────────────────────────────────────────────────
-        if 'user' in table:
-            self._process_users(device, decoded_data)
-
-        # ── ATTENDANCE LOGS (rtlog / attlog / transaction / rtlog) ──────
-        elif any(t in table for t in ['log', 'att', 'transaction', 'rtlog']):
-            self._process_attendance(device, decoded_data)
-
-        else:
-            _logger.info(f"[ZKTeco] ℹ️ Unhandled table '{table}' — payload logged above.")
-
-        return Response("OK\n", content_type='text/plain')
+            config = request.env['zkteco.adms.config'].sudo().search([
+                ('api_key', '=', api_key),
+                ('active', '=', True)
+            ], limit=1)
+            
+            if not config:
+                return Response('{"status":"error","message":"Unauthorized"}', content_type='application/json', status=401)
+                
+            command_ids = body.get('command_ids', [])
+            if command_ids:
+                commands = request.env['zkteco.command.queue'].sudo().browse(command_ids)
+                commands.write({'state': 'sent'})
+                
+            return Response('{"status":"ok"}', content_type='application/json')
+            
+        except Exception as e:
+            _logger.error(f"[ZKTeco] Flask command ack error: {e}")
+            return Response(json.dumps({
+                'status': 'error',
+                'message': str(e)
+            }), content_type='application/json', status=500)
 
     # ------------------------------------------------------------------
     # FLASK ADMS PUSH ENDPOINT (Flask calls this to push attendance to Odoo)
     # ------------------------------------------------------------------
-    @http.route('/zkteco/push/attendance', type='http', auth='none', methods=['POST'], csrf=False)
+    @http.route('/zkteco/push/attendance', type='http', auth='public', methods=['POST'], csrf=False)
     def flask_push_attendance(self, **kwargs):
         """
         Flask ADMS calls this endpoint to push attendance records directly into Odoo.
@@ -183,6 +213,9 @@ class ZKTecoController(http.Controller):
             raw = request.httprequest.get_data()
             body = _json.loads(raw.decode('utf-8', errors='ignore'))
             api_key = body.get('api_key', '')
+
+            if not api_key:
+                return Response('{"status":"error","message":"Unauthorized: Missing API Key"}', content_type='application/json', status=401)
 
             # Validate API key against any active ADMS config
             config = request.env['zkteco.adms.config'].sudo().search([
@@ -206,7 +239,7 @@ class ZKTecoController(http.Controller):
             _logger.error(f"[ZKTeco] Flask push error: {e}")
             return Response(f'{{"status":"error","message":"{str(e)}"}}', content_type='application/json', status=500)
 
-    @http.route('/zkteco/push/users', type='http', auth='none', methods=['POST'], csrf=False)
+    @http.route('/zkteco/push/users', type='http', auth='public', methods=['POST'], csrf=False)
     def flask_push_users(self, **kwargs):
         """
         Flask ADMS calls this endpoint to push user data directly into Odoo.
@@ -222,6 +255,9 @@ class ZKTecoController(http.Controller):
             raw = request.httprequest.get_data()
             body = _json.loads(raw.decode('utf-8', errors='ignore'))
             api_key = body.get('api_key', '')
+
+            if not api_key:
+                return Response('{"status":"error","message":"Unauthorized: Missing API Key"}', content_type='application/json', status=401)
 
             config = request.env['zkteco.adms.config'].sudo().search([
                 ('api_key', '=', api_key),
@@ -284,7 +320,11 @@ class ZKTecoController(http.Controller):
         2. Legacy format: bare key=value tab-separated lines
         """
         mapping_obj = request.env['zkteco.user.mapping'].sudo()
-        count = 0
+        new_mappings = []
+        updates = {}
+        
+        # 1. Parse all lines first
+        parsed_users = {}
         for line in data.split("\n"):
             line = line.strip()
             if not line or any(line.startswith(x) for x in ["ID=", "Return=", "OK"]):
@@ -294,31 +334,42 @@ class ZKTecoController(http.Controller):
                 line = line[5:]
 
             kv = self._parse_kv_line(line)
-            pin = kv.get("pin")
-            name = kv.get("name") or ""
-
-            _logger.info(f"[ZKTeco] 👤 User — PIN={pin} NAME={name}")
+            pin = kv.get("pin") or kv.get("uid") or kv.get("userid")
+            name = kv.get("name") or kv.get("username") or ""
 
             if pin:
-                mapping = mapping_obj.search([
-                    ('device_user_id', '=', pin),
-                    ('device_id', '=', device.id)
-                ], limit=1)
-                if not mapping:
-                    mapping_obj.create({
-                        'device_user_id': pin,
-                        'device_user_name': name,
-                        'device_id': device.id,
-                    })
-                    _logger.info(f"[ZKTeco]   ✅ Created mapping PIN={pin}")
-                else:
-                    mapping.write({'device_user_name': name})
-                    _logger.info(f"[ZKTeco]   ♻️  Updated mapping PIN={pin}")
-                count += 1
+                parsed_users[pin] = name
 
-        _logger.warning(f"[ZKTeco] ✅ User sync done — {count} users processed.")
+        if not parsed_users:
+            return
 
-    def _process_attendance(self, device, data):
+        # 2. Bulk search existing
+        existing = mapping_obj.search([
+            ('device_id', '=', device.id),
+            ('device_user_id', 'in', list(parsed_users.keys()))
+        ])
+        
+        existing_map = {m.device_user_id: m for m in existing}
+
+        # 3. Categorize into creates and updates
+        for pin, name in parsed_users.items():
+            if pin in existing_map:
+                if existing_map[pin].device_user_name != name:
+                    existing_map[pin].write({'device_user_name': name})
+            else:
+                new_mappings.append({
+                    'device_user_id': pin,
+                    'device_user_name': name,
+                    'device_id': device.id,
+                })
+
+        # 4. Bulk create
+        if new_mappings:
+            mapping_obj.create(new_mappings)
+
+        _logger.warning(f"[ZKTeco] ✅ User sync done — {len(parsed_users)} users processed. {len(new_mappings)} created.")
+
+    def _process_attendance(self, device, data, stamp=None):
         """
         Parse F22 attendance lines.
         F22 rtlog format (key=value, tab-separated):
@@ -327,21 +378,20 @@ class ZKTecoController(http.Controller):
           PIN\tDateTime\tState\tVerify\tWorkCode
         """
         att_obj = request.env['zkteco.attendance'].sudo()
-        count = 0
+        new_records = []
+        parsed_punches = []
 
+        # 1. Parse all lines
         for line in data.split("\n"):
             line = line.strip()
             if not line or line.startswith("Stamp="):
                 continue
 
             kv = self._parse_kv_line(line)
-
-            # F22 key=value format — prefer this
             timestamp_str = kv.get("time")
             pin = kv.get("pin")
             state_raw = kv.get("inoutstatus") or kv.get("event") or "0"
 
-            # Legacy positional format fallback
             if not timestamp_str or not pin:
                 parts = line.split("\t")
                 if len(parts) >= 2:
@@ -349,7 +399,6 @@ class ZKTecoController(http.Controller):
                     timestamp_str = parts[1].strip()
                     state_raw = parts[2].strip() if len(parts) >= 3 else "0"
                 else:
-                    _logger.warning(f"[ZKTeco] ⚠️ Cannot parse line: {line}")
                     continue
 
             try:
@@ -358,39 +407,58 @@ class ZKTecoController(http.Controller):
                 state = 0
 
             try:
-                timestamp = fields.Datetime.from_string(timestamp_str)
-                existing = att_obj.search([
-                    ('device_id', '=', device.id),
-                    ('device_user_id', '=', pin),
-                    ('timestamp', '=', timestamp),
-                ], limit=1)
-
-                if not existing:
-                    att_obj.create({
-                        'device_id': device.id,
-                        'device_user_id': pin,
+                timestamp = self._parse_timestamp(timestamp_str)
+                if timestamp:
+                    parsed_punches.append({
+                        'pin': pin,
                         'timestamp': timestamp,
-                        'event_type': state,
-                        'raw_data': line,
-                        'state': 'draft',
+                        'state': state,
+                        'line': line
                     })
-                    count += 1
-                    _logger.info(f"[ZKTeco] ⏰ Punch — PIN:{pin} | {timestamp_str} | state:{state}")
-
             except Exception as e:
-                _logger.error(f"[ZKTeco] ❌ Error on line: '{line}' | {e}")
+                _logger.error(f"[ZKTeco] ❌ Error parsing line: '{line}' | {e}")
 
-        # Auto-process: link employee + create hr.attendance
-        if count > 0:
-            new_drafts = att_obj.search([
-                ('state', '=', 'draft'),
-                ('device_id', '=', device.id),
-            ])
-            if new_drafts:
-                try:
-                    new_drafts.action_process_logs()
-                    _logger.info(f"[ZKTeco] ✅ Auto-processed {count} new attendance records for device {device.name}")
-                except Exception as e:
-                    _logger.error(f"[ZKTeco] ❌ Auto-process failed: {e}")
+        if not parsed_punches:
+            return
 
-        _logger.warning(f"[ZKTeco] ✅ Attendance done — {count} new records stored.")
+        # 2. Bulk check for existing records to prevent duplicates
+        pins = list(set(p['pin'] for p in parsed_punches))
+        timestamps = list(set(p['timestamp'] for p in parsed_punches))
+
+        existing = att_obj.search([
+            ('device_id', '=', device.id),
+            ('device_user_id', 'in', pins),
+            ('timestamp', 'in', timestamps)
+        ])
+        
+        # Create a fast lookup set: (device_user_id, timestamp)
+        existing_set = {(r.device_user_id, r.timestamp) for r in existing}
+        
+        # 3. Filter duplicates and prepare creates
+        for p in parsed_punches:
+            if (p['pin'], p['timestamp']) not in existing_set:
+                new_records.append({
+                    'device_id': device.id,
+                    'device_user_id': p['pin'],
+                    'timestamp': p['timestamp'],
+                    'event_type': p['state'],
+                    'raw_data': p['line'],
+                    'state': 'draft',
+                })
+                # Add to set so we don't insert duplicates within the same payload
+                existing_set.add((p['pin'], p['timestamp']))
+
+        # 4. Bulk create
+        if new_records:
+            att_obj.create(new_records)
+            _logger.warning(f"[ZKTeco] ✅ Attendance done — {len(new_records)} new records stored in Draft state.")
+        else:
+            _logger.info(f"[ZKTeco] ✅ Attendance done — 0 new records (all duplicates).")
+
+        # NOTE: We DO NOT auto-process drafts synchronously here.
+        # This prevents the worker timeout (120s limit) shown in the logs.
+        # Drafts will be picked up asynchronously by the ir.cron job.
+
+        if stamp is not None:
+            device.write({'last_stamp': stamp})
+            _logger.info(f"[ZKTeco] Updated last_stamp to {stamp} for device {device.name}")
