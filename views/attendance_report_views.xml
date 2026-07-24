@@ -147,7 +147,7 @@
         <field name="name">Late &amp; Early Report</field>
         <field name="res_model">attendance.report.line</field>
         <field name="view_mode">pivot,tree</field>
-        <field name="domain">[('late_minutes', '>', 0), ('early_departure_minutes', '>', 0)]</field>
+        <field name="domain">['|', ('late_minutes', '>', 0), ('early_departure_minutes', '>', 0)]</field>
         <field name="context">{'search_default_group_by_date': 1}</field>
     </record>
 
