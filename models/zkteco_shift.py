@@ -10,6 +10,7 @@ class ZKTecoShift(models.Model):
     grace_in = fields.Integer(string='Grace In (Mins)', default=0)
     grace_out = fields.Integer(string='Grace Out (Mins)', default=0)
     is_rotating = fields.Boolean(string='Rotating Shift', default=False)
+    work_policy_id = fields.Many2one('zkteco.work.policy', string='Work Policy')
 
     def _get_time_string(self, decimal_time):
         """Convert float hours to HH:MM string."""
