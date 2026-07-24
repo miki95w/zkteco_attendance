@@ -10,9 +10,17 @@ class AttendanceRecord(models.Model):
     """Daily attendance record with status tracking."""
     
     _name = 'zkteco.attendance.record'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
     _description = 'Daily Attendance Record'
     _order = 'date desc, employee_id'
     _rec_name = 'display_name'
+    
+    def action_fetch_logs(self):
+        """Trigger log fetching from active ADMS configuration."""
+        config = self.env['zkteco.adms.config'].search([('active', '=', True)], limit=1)
+        if config:
+            return config.action_fetch_attendance_data()
+        raise UserError(_('No active ADMS configuration found. Please configure the ADMS connection in Settings.'))
     
     # Basic Information
     employee_id = fields.Many2one('hr.employee', string='Employee', required=True, ondelete='cascade', index=True)
@@ -26,19 +34,19 @@ class AttendanceRecord(models.Model):
         ('absent', 'Absent'),
         ('missed_punch', 'Missed Punch'),
         ('on_leave', 'On Leave'),
-    ], string='Status', compute='_compute_status', store=True, index=True)
+    ], string='Status', compute='_compute_status', store=True, readonly=False, index=True, tracking=True)
     
     # Punch Times
-    first_checkin = fields.Datetime(string='First Check-in', compute='_compute_punch_times', store=True)
-    last_checkout = fields.Datetime(string='Last Check-out', compute='_compute_punch_times', store=True)
-    total_punches = fields.Integer(string='Total Punches', compute='_compute_punch_times', store=True)
+    first_checkin = fields.Datetime(string='First Check-in', compute='_compute_punch_times', store=True, readonly=False)
+    last_checkout = fields.Datetime(string='Last Check-out', compute='_compute_punch_times', store=True, readonly=False)
+    total_punches = fields.Integer(string='Total Punches', compute='_compute_punch_times', store=True, readonly=False)
     
     # Attendance Records
     attendance_ids = fields.One2many('hr.attendance', 'attendance_record_id', string='Attendance Records')
     attendance_count = fields.Integer(string='Attendance Count', compute='_compute_attendance_count')
     
     # Working Hours
-    worked_hours = fields.Float(string='Worked Hours', compute='_compute_worked_hours', store=True)
+    worked_hours = fields.Float(string='Worked Hours', compute='_compute_worked_hours', store=True, readonly=False)
     expected_hours = fields.Float(string='Expected Hours', default=8.0)
     
     # Shift Information
@@ -47,13 +55,16 @@ class AttendanceRecord(models.Model):
     shift_end = fields.Float(string='Shift End', related='shift_id.end_time', store=True)
     
     # Late/Early
-    is_late = fields.Boolean(string='Late Arrival', compute='_compute_late_early', store=True)
-    is_early_leave = fields.Boolean(string='Early Leave', compute='_compute_late_early', store=True)
-    late_minutes = fields.Integer(string='Late Minutes', compute='_compute_late_early', store=True)
-    early_leave_minutes = fields.Integer(string='Early Leave Minutes', compute='_compute_late_early', store=True)
+    is_late = fields.Boolean(string='Late Arrival', compute='_compute_late_early', store=True, readonly=False)
+    is_early_leave = fields.Boolean(string='Early Leave', compute='_compute_late_early', store=True, readonly=False)
+    late_minutes = fields.Integer(string='Late Minutes', compute='_compute_late_early', store=True, readonly=False)
+    early_leave_minutes = fields.Integer(string='Early Leave Minutes', compute='_compute_late_early', store=True, readonly=False)
     
     # Notes
-    remarks = fields.Text(string='Remarks')
+    remarks = fields.Text(string='Remarks', tracking=True)
+    
+    # Overtime
+    overtime_hours = fields.Float(string='Overtime Hours', compute='_compute_overtime_hours', store=True, readonly=False)
     
     # Display
     display_name = fields.Char(string='Display Name', compute='_compute_display_name')
@@ -134,6 +145,49 @@ class AttendanceRecord(models.Model):
         """Compute total worked hours."""
         for record in self:
             record.worked_hours = sum(record.attendance_ids.mapped('worked_hours'))
+
+    @api.depends('last_checkout', 'worked_hours', 'expected_hours', 'employee_id.work_policy_id', 'shift_id.work_policy_id')
+    def _compute_overtime_hours(self):
+        """Compute overtime hours based on assigned work policy."""
+        for record in self:
+            record.overtime_hours = 0.0
+            if not record.last_checkout:
+                continue
+                
+            policy = record.employee_id.work_policy_id or record.shift_id.work_policy_id
+            if not policy:
+                continue
+                
+            if policy.policy_type == 'flexible':
+                record.overtime_hours = max(0.0, record.worked_hours - record.expected_hours)
+            else:
+                # Regular, Night, or Other
+                # Convert UTC checkout to employee local time
+                timezone = record.employee_id.tz or record.env.user.tz or 'UTC'
+                import pytz
+                try:
+                    tz = pytz.timezone(timezone)
+                except pytz.UnknownTimeZoneError:
+                    tz = pytz.UTC
+                    
+                checkout_utc = pytz.utc.localize(record.last_checkout)
+                checkout_local = checkout_utc.astimezone(tz)
+                
+                checkout_hour = checkout_local.hour + checkout_local.minute / 60.0 + checkout_local.second / 3600.0
+                
+                # Check for day boundary cross (e.g. checked out next day)
+                days_diff = (checkout_local.date() - record.date).days
+                adjusted_checkout_hour = checkout_hour + (days_diff * 24.0)
+                
+                overtime_begin = policy.overtime_begin_time
+                end_t = policy.end_time
+                if end_t < policy.start_time:
+                    # Night shift: end time and overtime begin threshold cross midnight
+                    end_t += 24.0
+                    overtime_begin += 24.0
+                    
+                if adjusted_checkout_hour >= overtime_begin:
+                    record.overtime_hours = max(0.0, adjusted_checkout_hour - end_t)
     
     @api.depends('first_checkin', 'last_checkout', 'total_punches', 'date')
     def _compute_status(self):
@@ -169,7 +223,7 @@ class AttendanceRecord(models.Model):
             else:
                 record.status = 'absent'
     
-    @api.depends('first_checkin', 'last_checkout', 'shift_start', 'shift_end')
+    @api.depends('first_checkin', 'last_checkout', 'shift_id', 'employee_id.work_policy_id')
     def _compute_late_early(self):
         """Compute if employee is late or left early."""
         for record in self:
@@ -178,31 +232,67 @@ class AttendanceRecord(models.Model):
             record.late_minutes = 0
             record.early_leave_minutes = 0
             
-            if not record.shift_id:
-                continue
+            # Determine effective start/end times and grace periods
+            policy = record.employee_id.work_policy_id or (record.shift_id.work_policy_id if record.shift_id else False)
             
-            # Convert shift times (float hours) to datetime
-            if record.first_checkin and record.shift_start:
-                shift_start_dt = datetime.combine(
-                    record.date,
-                    time(hour=int(record.shift_start), minute=int((record.shift_start % 1) * 60))
-                )
+            start_time = None
+            end_time = None
+            grace_in = 0
+            grace_out = 0
+            
+            if policy:
+                start_time = policy.start_time
+                end_time = policy.end_time
+                grace_in = policy.grace_in
+                grace_out = policy.grace_out
+            elif record.shift_id:
+                start_time = record.shift_id.start_time
+                end_time = record.shift_id.end_time
+                grace_in = record.shift_id.grace_in
+                grace_out = record.shift_id.grace_out
                 
-                if record.first_checkin > shift_start_dt:
+            if start_time is None or end_time is None:
+                continue
+                
+            timezone = record.employee_id.tz or record.env.user.tz or 'UTC'
+            import pytz
+            try:
+                tz = pytz.timezone(timezone)
+            except pytz.UnknownTimeZoneError:
+                tz = pytz.UTC
+            
+            # Check late arrival
+            if record.first_checkin:
+                checkin_utc = pytz.utc.localize(record.first_checkin)
+                checkin_local = checkin_utc.astimezone(tz)
+                
+                shift_start_dt = tz.localize(datetime.combine(
+                    checkin_local.date(),
+                    time(hour=int(start_time), minute=int((start_time % 1) * 60))
+                ))
+                
+                grace_in_td = timedelta(minutes=grace_in)
+                if checkin_local > (shift_start_dt + grace_in_td):
                     record.is_late = True
-                    delta = record.first_checkin - shift_start_dt
+                    # Calculate late minutes from original start time, NOT grace period
+                    delta = checkin_local - shift_start_dt
                     record.late_minutes = int(delta.total_seconds() / 60)
             
             # Check early leave
-            if record.last_checkout and record.shift_end:
-                shift_end_dt = datetime.combine(
-                    record.date,
-                    time(hour=int(record.shift_end), minute=int((record.shift_end % 1) * 60))
-                )
+            if record.last_checkout:
+                checkout_utc = pytz.utc.localize(record.last_checkout)
+                checkout_local = checkout_utc.astimezone(tz)
                 
-                if record.last_checkout < shift_end_dt:
+                shift_end_dt = tz.localize(datetime.combine(
+                    checkout_local.date(),
+                    time(hour=int(end_time), minute=int((end_time % 1) * 60))
+                ))
+                
+                grace_out_td = timedelta(minutes=grace_out)
+                if checkout_local < (shift_end_dt - grace_out_td):
                     record.is_early_leave = True
-                    delta = shift_end_dt - record.last_checkout
+                    # Calculate early leave minutes from original end time
+                    delta = shift_end_dt - checkout_local
                     record.early_leave_minutes = int(delta.total_seconds() / 60)
     
     def action_view_attendances(self):
@@ -327,10 +417,9 @@ class AttendanceRecord(models.Model):
     
     @api.model
     def _cron_auto_mark_absent(self):
-        """Cron job to auto-mark absent employees."""
-        # Mark yesterday's absences (give a grace period)
-        yesterday = fields.Date.today() - timedelta(days=1)
-        return self.auto_mark_absent(yesterday)
+        """Cron job to auto-mark absent employees at 20:00."""
+        today = fields.Date.today()
+        return self.auto_mark_absent(today)
 
 
 
