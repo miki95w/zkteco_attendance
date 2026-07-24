@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_zkteco_historical_sync_form" model="ir.ui.view">
+        <field name="name">zkteco.historical.sync.form</field>
+        <field name="model">zkteco.historical.sync</field>
+        <field name="arch" type="xml">
+            <form string="Historical Attendance Sync" class="o_historical_sync_wizard">
+                <div class="alert alert-info mb-3">
+                    <h5><i class="fa fa-info-circle me-2"/>Historical Data Collection</h5>
+                    <p class="mb-1">This will automatically:</p>
+                    <ul class="mb-1">
+                        <li>Request historical attendance data from connected devices</li>
+                        <li>Wait for devices to upload the data (30-60 seconds)</li>
+                        <li>Automatically collect and process the records into Odoo</li>
+                        <li>Show you the final results</li>
+                    </ul>
+                    <p class="mb-0"><strong>Note:</strong> The process may take 1-2 minutes depending on the amount of data and device response time.</p>
+                </div>
+                
+                <group>
+                    <group string="Date Range Selection">
+                        <field name="config_id" invisible="1"/>
+                        <field name="range_type" widget="radio"/>
+                    </group>
+                    <group string="Custom Date Range" invisible="range_type != 'custom'">
+                        <field name="start_date" required="1"/>
+                        <field name="end_date" required="1"/>
+                    </group>
+                    <group string="Selected Range" invisible="range_type == 'custom'">
+                        <field name="start_date" readonly="1"/>
+                        <field name="end_date" readonly="1"/>
+                    </group>
+                </group>
+                
+                <div class="alert alert-warning mt-3">
+                    <i class="fa fa-exclamation-triangle me-2"/>
+                    <strong>Important:</strong> Make sure your devices are online and connected before starting the sync.
+                </div>
+                
+                <footer>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    <button name="action_sync" string="Start Historical Sync" type="object" class="btn-primary">
+                        <i class="fa fa-history me-2"/>Start Historical Sync
+                    </button>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>
