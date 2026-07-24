@@ -21,48 +21,30 @@ class AttendanceReportLine(models.Model):
 
     def init(self):
         tools.drop_view_if_exists(self.env.cr, 'attendance_report_line')
-        self.env.cr.execute(f"""
+        self.env.cr.execute("""
             CREATE OR REPLACE VIEW attendance_report_line AS (
                 SELECT
-                    ha.id as id,
-                    ha.employee_id as employee_id,
-                    CAST(ha.check_in AS DATE) as date,
-                    ha.check_in as check_in,
-                    ha.check_out as check_out,
-                    ha.shift_id as shift_id,
-
-                    -- Worked Hours
-                    EXTRACT(EPOCH FROM (ha.check_out - ha.check_in)) / 3600 as work_hours,
-
-                    -- Late Minutes
-                    GREATEST(0,
-                        (EXTRACT(EPOCH FROM (ha.check_in - (date_trunc('day', ha.check_in) + (s.start_time * interval '1 hour')))) / 60)
-                        - s.grace_in
-                    ) as late_minutes,
-
-                    -- Early Departure Minutes
-                    GREATEST(0,
-                        (EXTRACT(EPOCH FROM ((date_trunc('day', ha.check_in) + (s.end_time * interval '1 hour')) - ha.check_out)) / 60)
-                        - s.grace_out
-                    ) as early_departure_minutes,
-
-                    -- Overtime Hours
-                    GREATEST(0,
-                        EXTRACT(EPOCH FROM (ha.check_out - (date_trunc('day', ha.check_in) + (s.end_time * interval '1 hour')))) / 3600
-                    ) as overtime_hours,
-
+                    ar.id as id,
+                    ar.employee_id as employee_id,
+                    ar.date as date,
+                    ar.first_checkin as check_in,
+                    ar.last_checkout as check_out,
+                    ar.shift_id as shift_id,
+                    ar.worked_hours as work_hours,
+                    ar.late_minutes as late_minutes,
+                    ar.early_leave_minutes as early_departure_minutes,
+                    ar.overtime_hours as overtime_hours,
                     CASE
-                        WHEN (EXTRACT(EPOCH FROM (ha.check_in - (date_trunc('day', ha.check_in) + (s.start_time * interval '1 hour')))) / 60) > s.grace_in THEN 'Late'
-                        WHEN (EXTRACT(EPOCH FROM ((date_trunc('day', ha.check_in) + (s.end_time * interval '1 hour')) - ha.check_out)) / 60) > s.grace_out THEN 'Early Departure'
-                        WHEN ha.check_out IS NULL THEN 'Missing Punch'
+                        WHEN ar.status = 'absent' THEN 'Absent'
+                        WHEN ar.status = 'on_leave' THEN 'On Leave'
+                        WHEN ar.status = 'missed_punch' THEN 'Missing Punch'
+                        WHEN ar.is_late THEN 'Late'
+                        WHEN ar.is_early_leave THEN 'Early Departure'
                         ELSE 'Normal'
                     END as status
-
                 FROM
-                    hr_attendance ha
-                LEFT JOIN
-                    zkteco_shift s ON ha.shift_id = s.id
+                    zkteco_attendance_record ar
                 WHERE
-                    ha.employee_id IS NOT NULL
+                    ar.employee_id IS NOT NULL
             )
         """)
